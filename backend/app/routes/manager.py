@@ -1,0 +1,102 @@
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Any
+
+from fastapi import APIRouter, Depends
+
+from app.auth import AuthContext, get_auth_context
+from app.supabase import get_service_supabase
+from app.users import get_current_user_record, require_manager
+
+router = APIRouter(prefix="/manager", tags=["manager"])
+
+
+@router.get("/dashboard")
+def get_manager_dashboard(
+    auth: AuthContext = Depends(get_auth_context),
+) -> list[dict[str, Any]]:
+    supabase = get_service_supabase()
+    user = get_current_user_record(auth)
+    require_manager(user)
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    previous_month_start = (month_start - timedelta(days=1)).replace(day=1)
+
+    users = (
+        supabase.table("users")
+        .select("id,email,role")
+        .eq("team_id", auth.team_id)
+        .execute()
+        .data
+    )
+    leads = (
+        supabase.table("leads")
+        .select("id,ren_id,status")
+        .eq("team_id", auth.team_id)
+        .execute()
+        .data
+    )
+    viewings = (
+        supabase.table("viewings")
+        .select("id,assigned_ren_id,scheduled_at")
+        .eq("team_id", auth.team_id)
+        .gte("scheduled_at", month_start.isoformat())
+        .execute()
+        .data
+    )
+    current_deals = (
+        supabase.table("deals")
+        .select("ren_id,commission_total,commission_override")
+        .eq("team_id", auth.team_id)
+        .gte("closed_at", month_start.isoformat())
+        .execute()
+        .data
+    )
+    previous_deals = (
+        supabase.table("deals")
+        .select("ren_id,commission_total,commission_override")
+        .eq("team_id", auth.team_id)
+        .gte("closed_at", previous_month_start.isoformat())
+        .lt("closed_at", month_start.isoformat())
+        .execute()
+        .data
+    )
+
+    pipeline: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"Active": 0, "Negotiating": 0, "Closed": 0, "Lost": 0}
+    )
+    for lead in leads:
+        pipeline[lead["ren_id"]][lead["status"]] += 1
+
+    viewing_counts: dict[str, int] = defaultdict(int)
+    for viewing in viewings:
+        viewing_counts[viewing["assigned_ren_id"]] += 1
+
+    def commission_by_ren(deals: list[dict[str, Any]]) -> dict[str, Decimal]:
+        totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        for deal in deals:
+            value = Decimal(
+                str(deal.get("commission_override") or deal["commission_total"])
+            )
+            totals[deal["ren_id"]] += value
+        return totals
+
+    current_commission = commission_by_ren(current_deals)
+    previous_commission = commission_by_ren(previous_deals)
+
+    return [
+        {
+            "ren_id": ren["id"],
+            "ren_name": ren["email"],
+            "active_leads": pipeline[ren["id"]]["Active"]
+            + pipeline[ren["id"]]["Negotiating"],
+            "pipeline": pipeline[ren["id"]],
+            "viewing_count": viewing_counts[ren["id"]],
+            "commission": str(current_commission[ren["id"]]),
+            "monthly_trend": str(
+                current_commission[ren["id"]] - previous_commission[ren["id"]]
+            ),
+        }
+        for ren in users
+    ]

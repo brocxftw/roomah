@@ -11,6 +11,7 @@ from app.routes.deals import router as deals_router
 from app.routes.leads import router as leads_router
 from app.routes.manager import router as manager_router
 from app.routes.properties import router as properties_router
+from app.routes.users import router as users_router
 from app.routes.viewings import router as viewings_router
 
 logging.basicConfig(
@@ -35,6 +36,7 @@ app.include_router(deals_router)
 app.include_router(leads_router)
 app.include_router(manager_router)
 app.include_router(properties_router)
+app.include_router(users_router)
 app.include_router(viewings_router)
 
 

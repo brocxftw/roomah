@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import jwt
-from fastapi import FastAPI
+import pytest
+from fastapi import FastAPI, HTTPException
 
-from app.auth import SupabaseAuthMiddleware
+from app.auth import AuthContext, SupabaseAuthMiddleware
 from app.core.config import Settings
 
 TEAM_ID = "00000000-0000-4000-8000-000000000001"
@@ -66,3 +67,50 @@ class FakeJwksClient:
 class FakeSigningKey:
     def __init__(self, key: object) -> None:
         self.key = key
+
+
+class FakeResponse:
+    def __init__(self, data: dict[str, object] | None) -> None:
+        self.data = data
+
+
+class FakeQuery:
+    def __init__(self, row: dict[str, object] | None) -> None:
+        self.row = row
+
+    def table(self, _table_name: str) -> "FakeQuery":
+        return self
+
+    def select(self, _columns: str) -> "FakeQuery":
+        return self
+
+    def eq(self, _column: str, _value: object) -> "FakeQuery":
+        return self
+
+    def maybe_single(self) -> "FakeQuery":
+        return self
+
+    def execute(self) -> FakeResponse:
+        return FakeResponse(self.row)
+
+
+def test_deactivated_user_token_fails_auth_dependency(monkeypatch) -> None:
+    settings = Settings(supabase_url="https://example.supabase.co")
+    middleware = SupabaseAuthMiddleware(FastAPI(), settings=settings)
+    monkeypatch.setattr(
+        "app.supabase.get_service_supabase",
+        lambda: FakeQuery({"id": USER_ID, "active_status": False}),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        middleware._ensure_user_active(
+            AuthContext(
+                auth_user_id=AUTH_USER_ID,
+                user_id=USER_ID,
+                team_id=TEAM_ID,
+                role="REN",
+                claims={},
+            )
+        )
+
+    assert exc_info.value.status_code == 401

@@ -1,14 +1,16 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from postgrest.exceptions import APIError
+from pydantic import BaseModel, Field, model_validator
 
 from app.auth import AuthContext, get_auth_context
-from app.models import PropertyStatus
+from app.models import ListingType, PropertyStatus
 from app.supabase import get_service_supabase
-from app.users import get_current_user_record
+from app.users import get_current_user_record, get_team_user_references
 
 router = APIRouter(prefix="/properties", tags=["properties"])
 
@@ -17,7 +19,13 @@ class PropertyCreate(BaseModel):
     name: str = Field(min_length=1)
     type: str = Field(min_length=1)
     location: str = Field(min_length=1)
-    price: Decimal = Field(ge=0)
+    price: Decimal | None = Field(default=None, ge=0)
+    listing_type: ListingType = ListingType.SALE
+    market_value: Decimal | None = Field(default=None, ge=0)
+    listing_price: Decimal | None = Field(default=None, ge=0)
+    expected_rental: Decimal | None = Field(default=None, ge=0)
+    year_built: int | None = Field(default=None, ge=1900)
+    maintenance_fee: Decimal | None = Field(default=None, ge=0)
     status: PropertyStatus = PropertyStatus.ACTIVE
     bedrooms: int | None = Field(default=None, ge=0)
     bathrooms: int | None = Field(default=None, ge=0)
@@ -26,12 +34,28 @@ class PropertyCreate(BaseModel):
     furnishing: str | None = None
     description: str | None = None
 
+    @model_validator(mode="after")
+    def validate_listing_fields(self) -> "PropertyCreate":
+        _validate_listing_payload(
+            listing_type=self.listing_type,
+            listing_price=self.listing_price,
+            expected_rental=self.expected_rental,
+            year_built=self.year_built,
+        )
+        return self
+
 
 class PropertyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     type: str | None = Field(default=None, min_length=1)
     location: str | None = Field(default=None, min_length=1)
     price: Decimal | None = Field(default=None, ge=0)
+    listing_type: ListingType | None = None
+    market_value: Decimal | None = Field(default=None, ge=0)
+    listing_price: Decimal | None = Field(default=None, ge=0)
+    expected_rental: Decimal | None = Field(default=None, ge=0)
+    year_built: int | None = Field(default=None, ge=1900)
+    maintenance_fee: Decimal | None = Field(default=None, ge=0)
     status: PropertyStatus | None = None
     bedrooms: int | None = Field(default=None, ge=0)
     bathrooms: int | None = Field(default=None, ge=0)
@@ -55,6 +79,91 @@ class ImageCreate(BaseModel):
 
 class ImageUpdate(BaseModel):
     is_cover: bool
+
+
+def _validate_listing_payload(
+    *,
+    listing_type: ListingType,
+    listing_price: Decimal | None,
+    expected_rental: Decimal | None,
+    year_built: int | None,
+) -> None:
+    current_year = datetime.now(UTC).year
+    if year_built is not None and year_built > current_year:
+        raise ValueError("year_built must be between 1900 and the current year")
+    if listing_type == ListingType.SALE:
+        if listing_price is None:
+            raise ValueError("listing_price is required for Sale listings")
+        if expected_rental is not None:
+            raise ValueError("expected_rental is not allowed for Sale listings")
+    elif listing_type == ListingType.RENTAL:
+        if expected_rental is None:
+            raise ValueError("expected_rental is required for Rental listings")
+    elif listing_type == ListingType.BOTH:
+        if listing_price is None:
+            raise ValueError("listing_price is required for Both listings")
+        if expected_rental is None:
+            raise ValueError("expected_rental is required for Both listings")
+
+
+def _legacy_price_for_payload(payload: dict[str, Any]) -> str:
+    listing_price = payload.get("listing_price")
+    expected_rental = payload.get("expected_rental")
+    price = listing_price if listing_price is not None else expected_rental
+    if price is None:
+        price = payload.get("price")
+    if price is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A listing price or expected rental is required",
+        )
+    return str(price)
+
+
+def _normalize_property_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    normalized["price"] = _legacy_price_for_payload(normalized)
+    return normalized
+
+
+def _validate_merged_property(
+    existing: dict[str, Any], update_payload: dict[str, Any]
+) -> None:
+    merged = {**existing, **update_payload}
+    try:
+        _validate_listing_payload(
+            listing_type=ListingType(merged["listing_type"]),
+            listing_price=(
+                Decimal(str(merged["listing_price"]))
+                if merged.get("listing_price") is not None
+                else None
+            ),
+            expected_rental=(
+                Decimal(str(merged["expected_rental"]))
+                if merged.get("expected_rental") is not None
+                else None
+            ),
+            year_built=merged.get("year_built"),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+
+def _normalize_property_update(
+    existing: dict[str, Any],
+    update_payload: dict[str, Any],
+) -> dict[str, Any]:
+    price_fields = {"price", "listing_price", "expected_rental"}
+    if not price_fields.intersection(update_payload):
+        return update_payload
+
+    merged = {**existing, **update_payload}
+    normalized = dict(update_payload)
+    normalized["price"] = _legacy_price_for_payload(merged)
+    return normalized
 
 
 def _property_query_for_user(auth: AuthContext, user: dict[str, Any]):
@@ -97,7 +206,7 @@ def create_property(
     auth: AuthContext = Depends(get_auth_context),
 ) -> dict[str, Any]:
     user = get_current_user_record(auth)
-    insert_payload = payload.model_dump(mode="json")
+    insert_payload = _normalize_property_payload(payload.model_dump(mode="json"))
     insert_payload.update({"team_id": auth.team_id, "ren_id": user["id"]})
     response = (
         get_service_supabase().table("properties").insert(insert_payload).execute()
@@ -110,6 +219,7 @@ def list_properties(
     q: str | None = None,
     type_filter: str | None = None,
     status_filter: PropertyStatus | None = None,
+    listing_type: str | None = None,
     price_min: Decimal | None = None,
     price_max: Decimal | None = None,
     auth: AuthContext = Depends(get_auth_context),
@@ -122,12 +232,36 @@ def list_properties(
         query = query.eq("type", type_filter)
     if status_filter:
         query = query.eq("status", status_filter.value)
+    if listing_type:
+        listing_types = [
+            item.strip() for item in listing_type.split(",") if item.strip()
+        ]
+        allowed_listing_types = {item.value for item in ListingType}
+        invalid = [item for item in listing_types if item not in allowed_listing_types]
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid listing_type value(s): {', '.join(invalid)}",
+            )
+        query = query.in_("listing_type", listing_types)
     if price_min is not None:
         query = query.gte("price", str(price_min))
     if price_max is not None:
         query = query.lte("price", str(price_max))
 
-    return query.execute().data
+    properties = query.execute().data
+    ren_refs = get_team_user_references(
+        auth,
+        {
+            property_row["ren_id"]
+            for property_row in properties
+            if property_row.get("ren_id")
+        },
+    )
+    return [
+        {**property_row, "ren": ren_refs.get(property_row["ren_id"])}
+        for property_row in properties
+    ]
 
 
 @router.get("/{property_id}")
@@ -142,6 +276,7 @@ def get_property(
         auth=auth,
         user=user,
     )
+    ren_refs = get_team_user_references(auth, {property_row["ren_id"]})
     images = (
         supabase.table("property_images")
         .select("*")
@@ -150,7 +285,11 @@ def get_property(
         .execute()
     )
 
-    return {**property_row, "images": images.data}
+    return {
+        **property_row,
+        "ren": ren_refs.get(property_row["ren_id"]),
+        "images": images.data,
+    }
 
 
 @router.patch("/{property_id}")
@@ -160,10 +299,12 @@ def update_property(
     auth: AuthContext = Depends(get_auth_context),
 ) -> dict[str, Any]:
     user = get_current_user_record(auth)
-    _get_accessible_property(property_id=property_id, auth=auth, user=user)
+    existing = _get_accessible_property(property_id=property_id, auth=auth, user=user)
     update_payload = payload.model_dump(exclude_unset=True, mode="json")
     if not update_payload:
         return _get_accessible_property(property_id=property_id, auth=auth, user=user)
+    _validate_merged_property(existing, update_payload)
+    update_payload = _normalize_property_update(existing, update_payload)
 
     response = (
         get_service_supabase()
@@ -216,18 +357,26 @@ def complete_image_upload(
             .execute()
         )
 
-    response = (
-        supabase.table("property_images")
-        .insert(
-            {
-                "property_id": str(property_id),
-                "storage_path": payload.storage_path,
-                "is_cover": payload.is_cover,
-                "sort_order": payload.sort_order,
-            }
+    try:
+        response = (
+            supabase.table("property_images")
+            .insert(
+                {
+                    "property_id": str(property_id),
+                    "storage_path": payload.storage_path,
+                    "is_cover": payload.is_cover,
+                    "sort_order": payload.sort_order,
+                }
+            )
+            .execute()
         )
-        .execute()
-    )
+    except APIError as exc:
+        if exc.code == "23505":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An image with this storage path already exists.",
+            ) from exc
+        raise
     return response.data[0]
 
 

@@ -22,8 +22,23 @@ type LeadDetail = {
   budget_max?: number | null;
   preferred_location?: string | null;
   preferred_property_type?: string | null;
-  linked_properties: unknown[];
+  linked_properties: LinkedProperty[];
   timeline: TimelineEvent[];
+};
+
+type LinkedProperty = {
+  status: string;
+  properties: {
+    id: string;
+    name: string;
+    listing_type: "Sale" | "Rental" | "Both";
+    listing_price?: number | null;
+    expected_rental?: number | null;
+  };
+};
+
+type LinkPropertyResponse = {
+  warnings?: string[];
 };
 
 export default function LeadDetailPage() {
@@ -32,12 +47,14 @@ export default function LeadDetailPage() {
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [propertyId, setPropertyId] = useState("");
   const [dealPropertyId, setDealPropertyId] = useState("");
+  const [dealType, setDealType] = useState<"Sale" | "Rental">("Sale");
   const [salePrice, setSalePrice] = useState("");
   const [agencyFee, setAgencyFee] = useState("");
   const [lawyerFees, setLawyerFees] = useState("");
   const [commissionOverride, setCommissionOverride] = useState("");
   const [manualEventType, setManualEventType] = useState("manual_call");
   const [manualNote, setManualNote] = useState("");
+  const [linkWarnings, setLinkWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function loadLead() {
@@ -66,10 +83,11 @@ export default function LeadDetailPage() {
   const linkProperty = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const token = await getToken();
-    await apiFetch(`/leads/${leadId}/links`, token, {
+    const response = await apiFetch<LinkPropertyResponse>(`/leads/${leadId}/links`, token, {
       method: "POST",
       body: JSON.stringify({ property_id: propertyId }),
     });
+    setLinkWarnings(response.warnings ?? []);
     setPropertyId("");
     await loadLead();
   };
@@ -91,21 +109,32 @@ export default function LeadDetailPage() {
   const closeDeal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const token = await getToken();
-    await apiFetch("/deals", token, {
-      method: "POST",
-      body: JSON.stringify({
-        lead_id: leadId,
-        property_id: dealPropertyId,
-        sale_price: Number(salePrice),
-        agency_fee: agencyFee ? Number(agencyFee) : null,
-        lawyer_fees: lawyerFees ? Number(lawyerFees) : null,
-        commission_override: commissionOverride
-          ? Number(commissionOverride)
-          : null,
-      }),
-    });
+    try {
+      await apiFetch("/deals", token, {
+        method: "POST",
+        body: JSON.stringify({
+          lead_id: leadId,
+          property_id: dealPropertyId,
+          deal_type: dealType,
+          sale_price: Number(salePrice),
+          agency_fee: agencyFee ? Number(agencyFee) : null,
+          lawyer_fees: lawyerFees ? Number(lawyerFees) : null,
+          commission_override: commissionOverride
+            ? Number(commissionOverride)
+            : null,
+        }),
+      });
+    } catch (dealError) {
+      setError(
+        dealError instanceof Error
+          ? dealError.message
+          : "Failed to close deal"
+      );
+      return;
+    }
     setDealPropertyId("");
     setSalePrice("");
+    setDealType("Sale");
     setAgencyFee("");
     setLawyerFees("");
     setCommissionOverride("");
@@ -119,6 +148,41 @@ export default function LeadDetailPage() {
       </p>
     );
   }
+
+  const selectedDealProperty = lead.linked_properties.find(
+    (link) =>
+      link.status === "active" && link.properties.id === dealPropertyId
+  )?.properties;
+
+  const selectDealProperty = (propertyId: string) => {
+    setDealPropertyId(propertyId);
+    const property = lead.linked_properties.find(
+      (link) => link.properties.id === propertyId
+    )?.properties;
+    if (!property) return;
+
+    const nextDealType = property.listing_type === "Rental" ? "Rental" : "Sale";
+    setDealType(nextDealType);
+    setSalePrice(
+      String(
+        nextDealType === "Rental"
+          ? property.expected_rental ?? ""
+          : property.listing_price ?? ""
+      )
+    );
+  };
+
+  const updateDealType = (nextDealType: "Sale" | "Rental") => {
+    setDealType(nextDealType);
+    if (!selectedDealProperty) return;
+    setSalePrice(
+      String(
+        nextDealType === "Rental"
+          ? selectedDealProperty.expected_rental ?? ""
+          : selectedDealProperty.listing_price ?? ""
+      )
+    );
+  };
 
   return (
     <div className="space-y-8">
@@ -167,6 +231,19 @@ export default function LeadDetailPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             {lead.linked_properties.length} property link(s)
           </p>
+          <div className="mt-3 space-y-2">
+            {lead.linked_properties.map((link) => (
+              <div
+                key={link.properties.id}
+                className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+              >
+                <span>{link.properties.name}</span>
+                <span className="rounded-full bg-muted px-2 py-1 text-xs">
+                  {link.properties.listing_type}
+                </span>
+              </div>
+            ))}
+          </div>
           <div className="mt-4 flex gap-2">
             <input
               value={propertyId}
@@ -182,6 +259,13 @@ export default function LeadDetailPage() {
               Link
             </button>
           </div>
+          {linkWarnings.length ? (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              {linkWarnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
         </form>
       </section>
 
@@ -216,13 +300,41 @@ export default function LeadDetailPage() {
       <form onSubmit={closeDeal} className="rounded-lg border p-4">
         <h3 className="font-medium">Close Deal</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <input
+          <select
             value={dealPropertyId}
-            onChange={(event) => setDealPropertyId(event.target.value)}
-            placeholder="Linked property UUID"
+            onChange={(event) => selectDealProperty(event.target.value)}
             className="rounded-md border px-3 py-2"
             required
-          />
+          >
+            <option value="">Select linked property</option>
+            {lead.linked_properties
+              .filter((link) => link.status === "active")
+              .map((link) => (
+                <option key={link.properties.id} value={link.properties.id}>
+                  {link.properties.name} ({link.properties.listing_type})
+                </option>
+              ))}
+          </select>
+          {selectedDealProperty?.listing_type === "Both" ? (
+            <div className="flex items-center gap-4 rounded-md border px-3 py-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  checked={dealType === "Sale"}
+                  onChange={() => updateDealType("Sale")}
+                />
+                Sale
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  checked={dealType === "Rental"}
+                  onChange={() => updateDealType("Rental")}
+                />
+                Rental
+              </label>
+            </div>
+          ) : null}
           <input
             value={salePrice}
             onChange={(event) => setSalePrice(event.target.value)}

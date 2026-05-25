@@ -24,6 +24,25 @@ def get_current_user_record(auth: AuthContext) -> dict[str, Any]:
     return response.data
 
 
+def get_team_user_references(
+    auth: AuthContext,
+    user_ids: set[str],
+) -> dict[str, dict[str, Any]]:
+    if not user_ids:
+        return {}
+
+    users = (
+        get_service_supabase()
+        .table("users")
+        .select("id,email,full_name,phone_number,active_status")
+        .eq("team_id", auth.team_id)
+        .in_("id", sorted(user_ids))
+        .execute()
+        .data
+    )
+    return {user["id"]: user for user in users}
+
+
 def require_manager(user: dict[str, Any]) -> None:
     if user.get("role") != "MANAGER":
         raise HTTPException(

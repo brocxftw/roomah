@@ -9,7 +9,7 @@ from app.auth import AuthContext, get_auth_context
 from app.models import LeadStatus, TimelineEventSource, TimelineEventType
 from app.supabase import get_service_supabase
 from app.timeline import emit_timeline_event
-from app.users import get_current_user_record, require_manager
+from app.users import get_current_user_record, get_team_user_references, require_manager
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -98,6 +98,42 @@ def _get_accessible_lead(
     return response.data
 
 
+def _listing_type_warning(
+    *,
+    preferred_property_type: str | None,
+    listing_type: str,
+) -> str | None:
+    if not preferred_property_type:
+        return None
+
+    preference = preferred_property_type.lower()
+    wants_rental = any(term in preference for term in ("rent", "rental", "lease"))
+    wants_sale = any(term in preference for term in ("sale", "buy", "purchase"))
+    if wants_rental and listing_type == "Sale":
+        return "Lead preference looks rental-oriented, but this property is Sale-only."
+    if wants_sale and listing_type == "Rental":
+        return "Lead preference looks sale-oriented, but this property is Rental-only."
+
+    return None
+
+
+def _enrich_timeline_events(
+    auth: AuthContext,
+    events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    user_refs = get_team_user_references(
+        auth,
+        {event["created_by"] for event in events if event.get("created_by")},
+    )
+    return [
+        {
+            **event,
+            "created_by_user": user_refs.get(event["created_by"]),
+        }
+        for event in events
+    ]
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_lead(
     payload: LeadCreate,
@@ -141,8 +177,12 @@ def list_leads(
     if q:
         query = query.or_(f"name.ilike.%{q}%,phone.ilike.%{q}%,email.ilike.%{q}%")
 
-    response = query.execute()
-    return response.data
+    leads = query.execute().data
+    ren_refs = get_team_user_references(
+        auth,
+        {lead["ren_id"] for lead in leads if lead.get("ren_id")},
+    )
+    return [{**lead, "ren": ren_refs.get(lead["ren_id"])} for lead in leads]
 
 
 @router.get("/{lead_id}")
@@ -153,6 +193,7 @@ def get_lead(
     supabase = get_service_supabase()
     user = get_current_user_record(auth)
     lead = _get_accessible_lead(lead_id=lead_id, auth=auth, user=user)
+    ren_refs = get_team_user_references(auth, {lead["ren_id"]})
 
     links = (
         supabase.table("lead_properties")
@@ -169,10 +210,13 @@ def get_lead(
         .execute()
     )
 
+    timeline_events = _enrich_timeline_events(auth, timeline.data)
+
     return {
         **lead,
+        "ren": ren_refs.get(lead["ren_id"]),
         "linked_properties": links.data,
-        "timeline": timeline.data,
+        "timeline": timeline_events,
     }
 
 
@@ -183,16 +227,17 @@ def get_lead_timeline(
 ) -> list[dict[str, Any]]:
     user = get_current_user_record(auth)
     _get_accessible_lead(lead_id=lead_id, auth=auth, user=user)
-    response = (
+    events = (
         get_service_supabase()
         .table("timeline_events")
         .select("*")
         .eq("lead_id", str(lead_id))
         .order("created_at", desc=True)
         .execute()
+        .data
     )
 
-    return response.data
+    return _enrich_timeline_events(auth, events)
 
 
 @router.patch("/{lead_id}")
@@ -287,11 +332,11 @@ def link_property(
 ) -> dict[str, Any]:
     supabase = get_service_supabase()
     user = get_current_user_record(auth)
-    _get_accessible_lead(lead_id=lead_id, auth=auth, user=user)
+    lead = _get_accessible_lead(lead_id=lead_id, auth=auth, user=user)
 
     property_response = (
         supabase.table("properties")
-        .select("id")
+        .select("id,listing_type")
         .eq("id", str(payload.property_id))
         .eq("team_id", auth.team_id)
         .single()
@@ -326,7 +371,15 @@ def link_property(
         created_by=user["id"],
     )
 
-    return link
+    warnings = []
+    warning = _listing_type_warning(
+        preferred_property_type=lead.get("preferred_property_type"),
+        listing_type=property_response.data["listing_type"],
+    )
+    if warning:
+        warnings.append(warning)
+
+    return {**link, "warnings": warnings}
 
 
 @router.delete("/{lead_id}/links/{property_id}")

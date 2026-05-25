@@ -29,10 +29,14 @@ def auth_for(team_id: str, user_id: str) -> AuthContext:
 def make_user(user_id: str, team_id: str, email: str) -> dict[str, Any]:
     return {
         "id": user_id,
+        "auth_user_id": f"auth-{user_id}",
         "team_id": team_id,
         "email": email,
         "role": "REN",
         "commission_rate": "0.02",
+        "full_name": email.split("@", maxsplit=1)[0],
+        "phone_number": None,
+        "active_status": True,
     }
 
 

@@ -4,6 +4,10 @@ type TimelineEvent = {
   source: string;
   payload: Record<string, unknown>;
   created_at: string;
+  created_by_user?: {
+    email: string;
+    full_name: string;
+  } | null;
 };
 
 const eventLabels: Record<string, string> = {
@@ -52,6 +56,9 @@ export function TimelineEventList({ events }: { events: TimelineEvent[] }) {
           </p>
           <p className="text-sm text-muted-foreground">
             {new Date(event.created_at).toLocaleString()}
+            {event.created_by_user
+              ? ` · ${event.created_by_user.full_name} (${event.created_by_user.email})`
+              : ""}
           </p>
           <p className="mt-1 text-sm">{describeEvent(event)}</p>
         </div>

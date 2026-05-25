@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.auth import AuthContext, get_auth_context
-from app.models import TimelineEventType
+from app.models import ListingType, TimelineEventType
 from app.supabase import get_service_supabase
 from app.timeline import emit_timeline_event
-from app.users import get_current_user_record
+from app.users import get_current_user_record, get_team_user_references
 
 router = APIRouter(prefix="/deals", tags=["deals"])
 
@@ -18,6 +18,7 @@ class DealCreate(BaseModel):
     lead_id: UUID
     property_id: UUID
     sale_price: Decimal = Field(ge=0)
+    deal_type: ListingType | None = None
     agency_fee: Decimal | None = Field(default=None, ge=0)
     lawyer_fees: Decimal | None = Field(default=None, ge=0)
     commission_override: Decimal | None = None
@@ -41,6 +42,35 @@ def _validate_active_link(lead_id: UUID, property_id: UUID) -> None:
         )
 
 
+def _validate_deal_type(
+    property_row: dict[str, Any], deal_type: ListingType | None
+) -> str:
+    listing_type = ListingType(property_row["listing_type"])
+    if listing_type == ListingType.SALE:
+        if deal_type == ListingType.RENTAL:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Sale-only properties cannot close as Rental deals",
+            )
+        return ListingType.SALE.value
+    if listing_type == ListingType.RENTAL:
+        if deal_type == ListingType.SALE:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Rental-only properties cannot close as Sale deals",
+            )
+        return ListingType.RENTAL.value
+
+    if deal_type is None:
+        return ListingType.SALE.value
+    if deal_type not in {ListingType.SALE, ListingType.RENTAL}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Both listings must close as either Sale or Rental",
+        )
+    return deal_type.value
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_deal(
     payload: DealCreate,
@@ -48,7 +78,27 @@ def create_deal(
 ) -> dict[str, Any]:
     supabase = get_service_supabase()
     user = get_current_user_record(auth)
+    if user.get("active_status") is False:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Assigned REN is deactivated",
+        )
     _validate_active_link(payload.lead_id, payload.property_id)
+    property_row = (
+        supabase.table("properties")
+        .select("id,listing_type,listing_price,expected_rental")
+        .eq("id", str(payload.property_id))
+        .eq("team_id", auth.team_id)
+        .single()
+        .execute()
+        .data
+    )
+    if not property_row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Property not found",
+        )
+    deal_type = _validate_deal_type(property_row, payload.deal_type)
 
     config = (
         supabase.table("team_config")
@@ -125,6 +175,7 @@ def create_deal(
         payload={
             "deal_id": deal["id"],
             "property_id": str(payload.property_id),
+            "deal_type": deal_type,
             "sale_price": str(payload.sale_price),
             "commission_total": str(commission_total),
         },
@@ -174,4 +225,9 @@ def list_deals(
     if user["role"] != "MANAGER":
         query = query.eq("ren_id", user["id"])
 
-    return query.execute().data
+    deals = query.execute().data
+    ren_refs = get_team_user_references(
+        auth,
+        {deal["ren_id"] for deal in deals if deal.get("ren_id")},
+    )
+    return [{**deal, "ren": ren_refs.get(deal["ren_id"])} for deal in deals]

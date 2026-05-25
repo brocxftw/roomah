@@ -9,7 +9,7 @@ from app.auth import AuthContext, get_auth_context
 from app.models import TimelineEventType
 from app.supabase import get_service_supabase
 from app.timeline import emit_timeline_event
-from app.users import get_current_user_record, require_manager
+from app.users import get_current_user_record, get_team_user_references, require_manager
 
 router = APIRouter(prefix="/viewings", tags=["viewings"])
 
@@ -108,7 +108,22 @@ def list_viewings(
     auth: AuthContext = Depends(get_auth_context),
 ) -> list[dict[str, Any]]:
     user = get_current_user_record(auth)
-    return _viewing_query_for_user(auth, user).order("scheduled_at").execute().data
+    viewings = _viewing_query_for_user(auth, user).order("scheduled_at").execute().data
+    assigned_refs = get_team_user_references(
+        auth,
+        {
+            viewing["assigned_ren_id"]
+            for viewing in viewings
+            if viewing.get("assigned_ren_id")
+        },
+    )
+    return [
+        {
+            **viewing,
+            "assigned_ren": assigned_refs.get(viewing["assigned_ren_id"]),
+        }
+        for viewing in viewings
+    ]
 
 
 @router.post("/{viewing_id}/complete")

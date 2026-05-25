@@ -25,7 +25,7 @@ def get_manager_dashboard(
 
     users = (
         supabase.table("users")
-        .select("id,email,role")
+        .select("id,email,role,full_name,phone_number,active_status")
         .eq("team_id", auth.team_id)
         .execute()
         .data
@@ -88,7 +88,10 @@ def get_manager_dashboard(
     return [
         {
             "ren_id": ren["id"],
-            "ren_name": ren["email"],
+            "ren_name": ren["full_name"],
+            "ren_email": ren["email"],
+            "ren_phone_number": ren.get("phone_number"),
+            "ren_active_status": ren["active_status"],
             "active_leads": pipeline[ren["id"]]["Active"]
             + pipeline[ren["id"]]["Negotiating"],
             "pipeline": pipeline[ren["id"]],

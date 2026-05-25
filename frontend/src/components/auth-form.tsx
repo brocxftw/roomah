@@ -1,15 +1,32 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
+import { apiFetch } from "@/lib/api";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function AuthForm() {
   const supabase = createSupabaseBrowserClient();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function verifyActiveSession() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token ?? null;
+    if (!token) {
+      throw new Error("No active session was returned after sign-in.");
+    }
+
+    await apiFetch("/auth/sync-user", token, { method: "POST" });
+    const { data } = await supabase.auth.refreshSession();
+    await apiFetch("/users/me", data.session?.access_token ?? token);
+  }
 
   async function handlePasswordAuth(mode: "sign-in" | "sign-up") {
     setIsSubmitting(true);
@@ -23,6 +40,21 @@ export function AuthForm() {
     setIsSubmitting(false);
     if (error) {
       setMessage(error.message);
+      return;
+    }
+
+    try {
+      await verifyActiveSession();
+    } catch (sessionError) {
+      await supabase.auth.signOut();
+      const message =
+        sessionError instanceof Error ? sessionError.message : String(sessionError);
+      if (message.toLowerCase().includes("deactivated")) {
+        window.location.href = "/?reason=deactivated";
+        return;
+      }
+      setIsSubmitting(false);
+      setMessage(message);
       return;
     }
 
@@ -86,6 +118,11 @@ export function AuthForm() {
       >
         Continue with Google
       </button>
+      {searchParams.get("reason") === "deactivated" ? (
+        <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          This account has been deactivated. Contact your manager for access.
+        </p>
+      ) : null}
       {message ? <p className="text-sm text-red-600">{message}</p> : null}
     </div>
   );

@@ -3,12 +3,39 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type React from "react";
+import { useEffect, useState } from "react";
 
+import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
+
+type CurrentUser = {
+  email: string;
+  full_name: string;
+};
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { getToken, signOut } = useAuth();
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const token = await getToken();
+      if (!token) return;
+      const user = await apiFetch<CurrentUser>("/users/me", token);
+      setCurrentUser(user);
+    }
+
+    void loadCurrentUser().catch(async (error) => {
+      if (
+        error instanceof Error &&
+        error.message.toLowerCase().includes("deactivated")
+      ) {
+        await signOut();
+        router.push("/?reason=deactivated");
+      }
+    });
+  }, [getToken, router, signOut]);
 
   async function handleSignOut() {
     await signOut();
@@ -43,6 +70,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/app/manager" className="text-sm font-medium">
               Manager
             </Link>
+            <Link href="/app/profile" className="text-sm font-medium">
+              Profile
+            </Link>
+            {currentUser ? (
+              <div className="text-right text-sm">
+                <p className="font-medium">{currentUser.full_name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {currentUser.email}
+                </p>
+              </div>
+            ) : null}
             <button
               type="button"
               className="text-sm font-medium text-muted-foreground transition hover:text-foreground"

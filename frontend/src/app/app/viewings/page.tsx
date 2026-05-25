@@ -16,6 +16,10 @@ type Viewing = {
   scheduled_at: string;
   status: string;
   suggested_follow_up_at?: string;
+  assigned_ren?: {
+    email: string;
+    full_name: string;
+  } | null;
 };
 
 export default function ViewingsPage() {
@@ -103,6 +107,12 @@ export default function ViewingsPage() {
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Lead {viewing.lead_id} · Property {viewing.property_id}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Assigned to {viewing.assigned_ren?.full_name ?? viewing.assigned_ren_id}
+                    {viewing.assigned_ren?.email
+                      ? ` · ${viewing.assigned_ren.email}`
+                      : ""}
                   </p>
                 </div>
                 <span className="text-sm">{viewing.status}</span>

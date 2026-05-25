@@ -13,6 +13,10 @@ type Deal = {
   commission_total: number;
   commission_override?: number | null;
   closed_at: string;
+  ren?: {
+    email: string;
+    full_name: string;
+  } | null;
 };
 
 export default function DealsPage() {
@@ -47,11 +51,17 @@ export default function DealsPage() {
         {deals.map((deal) => (
           <div
             key={deal.id}
-            className="grid grid-cols-5 gap-4 border-b p-4 last:border-b-0"
+            className="grid grid-cols-6 gap-4 border-b p-4 last:border-b-0"
           >
             <span>{new Date(deal.closed_at).toLocaleDateString()}</span>
             <span>Lead {deal.lead_id}</span>
             <span>Property {deal.property_id}</span>
+            <span>
+              <span className="block">{deal.ren?.full_name ?? "-"}</span>
+              <span className="text-xs text-muted-foreground">
+                {deal.ren?.email ?? ""}
+              </span>
+            </span>
             <span>RM {deal.sale_price}</span>
             <span>RM {deal.commission_override ?? deal.commission_total}</span>
           </div>

@@ -13,6 +13,10 @@ type Lead = {
   email: string;
   status: string;
   preferred_location?: string | null;
+  ren?: {
+    email: string;
+    full_name: string;
+  } | null;
 };
 
 export default function LeadsPage() {
@@ -88,11 +92,17 @@ export default function LeadsPage() {
           <Link
             key={lead.id}
             href={`/app/leads/${lead.id}`}
-            className="grid grid-cols-4 gap-4 border-b p-4 last:border-b-0 hover:bg-muted"
+            className="grid grid-cols-5 gap-4 border-b p-4 last:border-b-0 hover:bg-muted"
           >
             <span className="font-medium">{lead.name}</span>
             <span>{lead.phone}</span>
             <span>{lead.email}</span>
+            <span>
+              <span className="block">{lead.ren?.full_name ?? "-"}</span>
+              <span className="text-xs text-muted-foreground">
+                {lead.ren?.email ?? ""}
+              </span>
+            </span>
             <span>{lead.status}</span>
           </Link>
         ))}

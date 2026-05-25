@@ -1,10 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
+
+type UserOption = {
+  id: string;
+  email: string;
+  full_name: string;
+};
 
 export default function NewViewingPage() {
   const router = useRouter();
@@ -15,11 +21,31 @@ export default function NewViewingPage() {
     scheduled_at: "",
     assigned_ren_id: "",
   });
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const updateField = (field: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
+
+  useEffect(() => {
+    async function loadUsers() {
+      const token = await getToken();
+      try {
+        const teamUsers = await apiFetch<UserOption[]>("/users", token);
+        setUsers(teamUsers);
+      } catch {
+        const currentUser = await apiFetch<UserOption>("/users/me", token);
+        setUsers([currentUser]);
+        setForm((current) => ({
+          ...current,
+          assigned_ren_id: current.assigned_ren_id || currentUser.id,
+        }));
+      }
+    }
+
+    void loadUsers();
+  }, [getToken]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -70,13 +96,19 @@ export default function NewViewingPage() {
         className="w-full rounded-md border px-3 py-2"
         required
       />
-      <input
+      <select
         value={form.assigned_ren_id}
         onChange={(event) => updateField("assigned_ren_id", event.target.value)}
-        placeholder="Assigned REN UUID"
         className="w-full rounded-md border px-3 py-2"
         required
-      />
+      >
+        <option value="">Select assigned REN</option>
+        {users.map((user) => (
+          <option key={user.id} value={user.id}>
+            {user.full_name} ({user.email})
+          </option>
+        ))}
+      </select>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

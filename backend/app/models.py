@@ -25,6 +25,12 @@ class PropertyStatus(StrEnum):
     INACTIVE = "Inactive"
 
 
+class ListingType(StrEnum):
+    SALE = "Sale"
+    RENTAL = "Rental"
+    BOTH = "Both"
+
+
 class LeadPropertyStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -73,6 +79,9 @@ class User(RoomahModel):
     email: EmailStr
     role: UserRole
     commission_rate: Decimal = Field(ge=0)
+    full_name: str
+    phone_number: str | None = None
+    active_status: bool
     created_at: datetime
 
 
@@ -108,6 +117,12 @@ class Property(RoomahModel):
     type: str
     location: str
     price: Decimal = Field(ge=0)
+    listing_type: ListingType
+    market_value: Decimal | None = Field(default=None, ge=0)
+    listing_price: Decimal | None = Field(default=None, ge=0)
+    expected_rental: Decimal | None = Field(default=None, ge=0)
+    year_built: int | None = Field(default=None, ge=1900)
+    maintenance_fee: Decimal | None = Field(default=None, ge=0)
     status: PropertyStatus
     bedrooms: int | None = Field(default=None, ge=0)
     bathrooms: int | None = Field(default=None, ge=0)

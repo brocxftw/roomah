@@ -80,13 +80,49 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
                 detail="Token missing required ROOMAH claims",
             )
 
-        return AuthContext(
+        auth_context = AuthContext(
             auth_user_id=auth_user_id,
             user_id=str(user_id),
             team_id=team_id,
             role=role,  # type: ignore[arg-type]
             claims=claims,
         )
+        self._ensure_user_active(
+            auth_context, allow_unsynced=request.url.path == "/auth/sync-user"
+        )
+        return auth_context
+
+    def _ensure_user_active(
+        self,
+        auth_context: AuthContext,
+        *,
+        allow_unsynced: bool = False,
+    ) -> None:
+        from app.supabase import get_service_supabase
+
+        query = (
+            get_service_supabase()
+            .table("users")
+            .select("id,active_status")
+            .eq("auth_user_id", auth_context.auth_user_id)
+        )
+        if auth_context.user_id != "00000000-0000-0000-0000-000000000000":
+            query = query.eq("id", auth_context.user_id)
+
+        response = query.maybe_single().execute()
+        if not response.data:
+            if allow_unsynced:
+                return
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Current user has not been synced",
+            )
+
+        if response.data.get("active_status") is False:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account has been deactivated",
+            )
 
     def _decode_token(self, token: str) -> dict[str, object]:
         try:

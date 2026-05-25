@@ -9,10 +9,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.auth import AuthContext
-from app.models import LeadStatus, PropertyStatus, TimelineEventType
+from app import users as user_helpers
+from app.models import LeadStatus, ListingType, PropertyStatus, TimelineEventType
 from app.routes import deals as deal_routes
 from app.routes import leads as lead_routes
 from app.routes import properties as property_routes
+from app.routes import users as user_routes
 from app.routes import viewings as viewing_routes
 
 TEAM_ID = "00000000-0000-4000-8000-000000000001"
@@ -70,6 +72,10 @@ class FakeQuery:
         return self
 
     def single(self) -> FakeQuery:
+        self.single_result = True
+        return self
+
+    def maybe_single(self) -> FakeQuery:
         self.single_result = True
         return self
 
@@ -187,10 +193,14 @@ class FakeSupabase:
     def user(user_id: str, email: str, role: str) -> dict[str, Any]:
         return {
             "id": user_id,
+            "auth_user_id": f"auth-{user_id}",
             "team_id": TEAM_ID,
             "email": email,
             "role": role,
             "commission_rate": "0.02",
+            "full_name": email.split("@", maxsplit=1)[0],
+            "phone_number": None,
+            "active_status": True,
         }
 
     def table(self, table_name: str) -> FakeQuery:
@@ -212,9 +222,10 @@ def auth_context(user_id: str, role: str) -> AuthContext:
 
 
 def patch_supabase(monkeypatch: pytest.MonkeyPatch, supabase: FakeSupabase) -> None:
-    modules = [lead_routes, property_routes, viewing_routes, deal_routes]
+    modules = [lead_routes, property_routes, viewing_routes, deal_routes, user_routes]
     for module in modules:
         monkeypatch.setattr(module, "get_service_supabase", lambda: supabase)
+    monkeypatch.setattr(user_helpers, "get_service_supabase", lambda: supabase)
 
     def current_user(auth: AuthContext) -> dict[str, Any]:
         return next(
@@ -247,6 +258,7 @@ def create_lead_property_link_viewing(
             type="Condo",
             location="KL",
             price=Decimal("500000"),
+            listing_price=Decimal("500000"),
             status=PropertyStatus.ACTIVE,
         ),
         auth=auth,
@@ -403,3 +415,205 @@ def test_manager_can_reassign_lead_and_ren_cannot(monkeypatch) -> None:
         and event["payload"] == {"from_ren_id": REN_ID, "to_ren_id": OTHER_REN_ID}
         for event in supabase.tables["timeline_events"]
     )
+
+
+def test_sale_property_requires_listing_price() -> None:
+    with pytest.raises(ValueError, match="listing_price is required"):
+        property_routes.PropertyCreate(
+            name="Sale Condo",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.SALE,
+        )
+
+
+def test_rental_property_requires_expected_rental() -> None:
+    with pytest.raises(ValueError, match="expected_rental is required"):
+        property_routes.PropertyCreate(
+            name="Rental Condo",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.RENTAL,
+        )
+
+
+def test_both_property_requires_both_prices() -> None:
+    with pytest.raises(ValueError, match="expected_rental is required"):
+        property_routes.PropertyCreate(
+            name="Dual Listing",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.BOTH,
+            listing_price=Decimal("500000"),
+        )
+
+
+def test_sale_property_rejects_expected_rental() -> None:
+    with pytest.raises(ValueError, match="expected_rental is not allowed"):
+        property_routes.PropertyCreate(
+            name="Bad Sale Condo",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.SALE,
+            listing_price=Decimal("500000"),
+            expected_rental=Decimal("2500"),
+        )
+
+
+def test_property_listing_type_filter(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Rental Condo",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.RENTAL,
+            expected_rental=Decimal("2500"),
+        ),
+        auth=auth,
+    )
+    property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Sale Condo",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.SALE,
+            listing_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    rentals = property_routes.list_properties(listing_type="Rental", auth=auth)
+
+    assert [property_row["name"] for property_row in rentals] == ["Rental Condo"]
+
+
+def test_linking_mismatched_listing_type_returns_warning(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead = lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Buyer",
+            phone="60123456789",
+            email="buyer@example.com",
+            preferred_property_type="buy",
+        ),
+        auth=auth,
+    )
+    property_row = property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Rental Condo",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.RENTAL,
+            expected_rental=Decimal("2500"),
+        ),
+        auth=auth,
+    )
+
+    linked = lead_routes.link_property(
+        lead_id=lead["id"],
+        payload=lead_routes.LeadPropertyLinkCreate(property_id=property_row["id"]),
+        auth=auth,
+    )
+
+    assert linked["warnings"]
+
+
+def test_deactivated_ren_cannot_close_deal(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, _viewing = create_lead_property_link_viewing(supabase, auth)
+    supabase.tables["users"][0]["active_status"] = False
+
+    with pytest.raises(HTTPException) as exc_info:
+        deal_routes.create_deal(
+            payload=deal_routes.DealCreate(
+                lead_id=lead["id"],
+                property_id=property_row["id"],
+                sale_price=Decimal("500000"),
+            ),
+            auth=auth,
+        )
+
+    assert exc_info.value.status_code == 401
+
+
+def test_rental_deal_persists_submitted_sale_price(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead = lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Tenant",
+            phone="60123456789",
+            email="tenant@example.com",
+            preferred_property_type="rental",
+        ),
+        auth=auth,
+    )
+    property_row = property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Rental Condo",
+            type="Condo",
+            location="KL",
+            listing_type=ListingType.RENTAL,
+            expected_rental=Decimal("2500"),
+        ),
+        auth=auth,
+    )
+    lead_routes.link_property(
+        lead_id=lead["id"],
+        payload=lead_routes.LeadPropertyLinkCreate(property_id=property_row["id"]),
+        auth=auth,
+    )
+
+    deal = deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            deal_type=ListingType.RENTAL,
+            sale_price=Decimal("2500"),
+        ),
+        auth=auth,
+    )
+
+    assert deal["sale_price"] == "2500"
+
+
+def test_ren_cannot_patch_restricted_user_fields(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    with pytest.raises(HTTPException) as exc_info:
+        user_routes.update_me(
+            payload=user_routes.UserSelfUpdate(active_status=False),
+            auth=auth,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_manager_can_patch_team_member_identity_and_status(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+
+    updated = user_routes.update_user(
+        user_id=REN_ID,
+        payload=user_routes.UserAdminUpdate(
+            full_name="Alice Tan",
+            phone_number="+60123456789",
+            active_status=False,
+        ),
+        auth=auth,
+    )
+
+    assert updated["full_name"] == "Alice Tan"
+    assert updated["phone_number"] == "+60123456789"
+    assert updated["active_status"] is False

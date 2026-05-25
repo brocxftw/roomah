@@ -81,6 +81,64 @@ def get_dashboard(
         Decimal(str(deal.get("commission_override") or deal["commission_total"]))
         for deal in monthly_deals
     )
+    attributed_leads_query = (
+        supabase.table("leads")
+        .select("id,campaign_id,ren_id,created_at")
+        .eq("team_id", auth.team_id)
+        .gte("created_at", month_start.isoformat())
+    )
+    if user["role"] != "MANAGER":
+        attributed_leads_query = attributed_leads_query.eq("ren_id", user["id"])
+    attributed_leads = [
+        lead
+        for lead in attributed_leads_query.execute().data
+        if lead.get("campaign_id")
+    ]
+    attributed_lead_ids = {lead["id"] for lead in attributed_leads}
+    attributed_deals = [
+        deal for deal in monthly_deals if deal["lead_id"] in attributed_lead_ids
+    ]
+    campaign_conversion_rate_month = (
+        None if not attributed_leads else len(attributed_deals) / len(attributed_leads)
+    )
+    leads_by_campaign: dict[str, list[dict[str, Any]]] = {}
+    for lead in attributed_leads:
+        leads_by_campaign.setdefault(lead["campaign_id"], []).append(lead)
+
+    conversions_by_campaign: dict[str, int] = {}
+    lead_to_campaign = {lead["id"]: lead["campaign_id"] for lead in attributed_leads}
+    for deal in attributed_deals:
+        campaign_id = lead_to_campaign.get(deal["lead_id"])
+        if campaign_id:
+            conversions_by_campaign[campaign_id] = (
+                conversions_by_campaign.get(campaign_id, 0) + 1
+            )
+
+    top_performing_campaign = None
+    if conversions_by_campaign:
+        top_campaign_id = max(
+            conversions_by_campaign,
+            key=lambda campaign_id: (
+                conversions_by_campaign[campaign_id]
+                / max(len(leads_by_campaign.get(campaign_id, [])), 1),
+                conversions_by_campaign[campaign_id],
+            ),
+        )
+        campaign = (
+            supabase.table("marketing_campaigns")
+            .select("id,name,channel")
+            .eq("id", top_campaign_id)
+            .eq("team_id", auth.team_id)
+            .single()
+            .execute()
+            .data
+        )
+        if campaign:
+            top_performing_campaign = {
+                **campaign,
+                "leads_generated": len(leads_by_campaign[top_campaign_id]),
+                "conversions": conversions_by_campaign[top_campaign_id],
+            }
 
     return {
         "tasks": {
@@ -94,5 +152,7 @@ def get_dashboard(
             "deals_closed": len(monthly_deals),
             "monthly_commission": str(monthly_commission),
             "follow_ups_due": len(follow_ups_due),
+            "campaign_conversion_rate_month": campaign_conversion_rate_month,
+            "top_performing_campaign_month": top_performing_campaign,
         },
     }

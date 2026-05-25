@@ -22,6 +22,14 @@ type Dashboard = {
     deals_closed: number;
     monthly_commission: string;
     follow_ups_due: number;
+    campaign_conversion_rate_month: number | null;
+    top_performing_campaign_month?: {
+      id: string;
+      name: string;
+      channel: string;
+      leads_generated: number;
+      conversions: number;
+    } | null;
   };
 };
 
@@ -95,7 +103,7 @@ export default function DashboardPage() {
 
       <section>
         <h3 className="text-lg font-semibold">KPI Summary</h3>
-        <div className="mt-4 grid gap-4 md:grid-cols-5">
+        <div className="mt-4 grid gap-4 md:grid-cols-7">
           <Kpi label="Active Leads" value={dashboard.kpis.active_leads} />
           <Kpi
             label="Properties Listed"
@@ -107,6 +115,12 @@ export default function DashboardPage() {
             value={`RM ${dashboard.kpis.monthly_commission}`}
           />
           <Kpi label="Follow-ups Due" value={dashboard.kpis.follow_ups_due} />
+          <CampaignConversionRateCard
+            value={dashboard.kpis.campaign_conversion_rate_month}
+          />
+          <TopPerformingCampaignCard
+            campaign={dashboard.kpis.top_performing_campaign_month}
+          />
         </div>
       </section>
     </div>
@@ -157,6 +171,41 @@ function Kpi({ label, value }: { label: string; value: string | number }) {
     <div className="rounded-lg border p-4">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="mt-2 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function CampaignConversionRateCard({ value }: { value: number | null }) {
+  return (
+    <Kpi
+      label="Campaign Conversion Rate"
+      value={value == null ? "-" : `${(value * 100).toFixed(0)}%`}
+    />
+  );
+}
+
+function TopPerformingCampaignCard({
+  campaign,
+}: {
+  campaign?: {
+    name: string;
+    channel: string;
+    leads_generated: number;
+    conversions: number;
+  } | null;
+}) {
+  if (!campaign) {
+    return <Kpi label="Top Campaign" value="No conversions yet" />;
+  }
+
+  return (
+    <div className="rounded-lg border p-4">
+      <p className="text-sm text-muted-foreground">Top Campaign</p>
+      <p className="mt-2 text-lg font-semibold">{campaign.name}</p>
+      <p className="text-sm text-muted-foreground">
+        {campaign.channel} · {campaign.leads_generated} leads ·{" "}
+        {campaign.conversions} conversions
+      </p>
     </div>
   );
 }

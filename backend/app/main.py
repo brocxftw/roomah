@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth import SupabaseAuthMiddleware
 from app.core.config import get_settings
 from app.routes.auth import router as auth_router
+from app.routes.campaigns import router as campaigns_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.deals import router as deals_router
 from app.routes.leads import router as leads_router
@@ -31,6 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth_router)
+app.include_router(campaigns_router)
 app.include_router(dashboard_router)
 app.include_router(deals_router)
 app.include_router(leads_router)

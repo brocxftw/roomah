@@ -9,6 +9,7 @@ import {
   TimelineEventList,
   type TimelineEvent,
 } from "@/components/timeline-event-list";
+import { CampaignPicker } from "@/components/campaign-picker";
 import { RecordPicker, type RecordPickerGroup } from "@/components/record-picker";
 import { apiFetch } from "@/lib/api";
 import { propertyAddressSummary } from "@/lib/malaysia-areas";
@@ -26,6 +27,13 @@ type LeadDetail = {
   budget_max?: number | null;
   preferred_location?: string | null;
   preferred_property_type?: string | null;
+  campaign_id?: string | null;
+  campaign?: {
+    id: string;
+    name: string;
+    channel: string;
+    status: string;
+  } | null;
   linked_properties: LinkedProperty[];
   timeline: TimelineEvent[];
 };
@@ -78,6 +86,8 @@ export default function LeadDetailPage() {
   const [commissionOverride, setCommissionOverride] = useState("");
   const [manualEventType, setManualEventType] = useState("manual_call");
   const [manualNote, setManualNote] = useState("");
+  const [editingCampaign, setEditingCampaign] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [linkWarnings, setLinkWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,6 +122,16 @@ export default function LeadDetailPage() {
       method: "PATCH",
       body: JSON.stringify({ status }),
     });
+    await loadLead();
+  };
+
+  const updateCampaign = async () => {
+    const token = await getToken();
+    await apiFetch(`/leads/${leadId}`, token, {
+      method: "PATCH",
+      body: JSON.stringify({ campaign_id: selectedCampaignId }),
+    });
+    setEditingCampaign(false);
     await loadLead();
   };
 
@@ -289,6 +309,57 @@ export default function LeadDetailPage() {
               <dd>{lead.preferred_property_type ?? "-"}</dd>
             </div>
           </dl>
+        </div>
+
+        <div className="rounded-lg border p-4">
+          <h3 className="font-medium">Campaign Attribution</h3>
+          {editingCampaign ? (
+            <div className="mt-3 space-y-3">
+              <CampaignPicker
+                value={selectedCampaignId}
+                onChange={setSelectedCampaignId}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void updateCampaign()}
+                  className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingCampaign(false)}
+                  className="rounded-md border px-3 py-2 text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">
+                  {lead.campaign?.name ?? "Unattributed"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {lead.campaign
+                    ? `${lead.campaign.channel} · ${lead.campaign.status}`
+                    : "No campaign selected"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCampaignId(lead.campaign_id ?? null);
+                  setEditingCampaign(true);
+                }}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
 
         <form onSubmit={linkProperty} className="rounded-lg border p-4">

@@ -21,9 +21,36 @@ type ManagerRow = {
   monthly_trend: string;
 };
 
+type ManagerCampaigns = {
+  campaigns: {
+    id: string;
+    name: string;
+    channel: string;
+    status: string;
+    ad_spending: string | number;
+    ad_spending_month: string | number;
+    leads_generated: number;
+    leads_generated_month: number;
+    conversions: number;
+    conversions_month: number;
+    cost_per_lead?: string | number | null;
+    conversion_rate?: string | number | null;
+  }[];
+  channel_rollups: {
+    channel: string;
+    ad_spending: string;
+    leads_generated: number;
+    conversions: number;
+  }[];
+};
+
 export default function ManagerDashboardPage() {
   const { getToken } = useAuth();
   const [rows, setRows] = useState<ManagerRow[]>([]);
+  const [campaigns, setCampaigns] = useState<ManagerCampaigns>({
+    campaigns: [],
+    channel_rollups: [],
+  });
   const [editingRows, setEditingRows] = useState<
     Record<string, { full_name: string; phone_number: string }>
   >({});
@@ -31,8 +58,12 @@ export default function ManagerDashboardPage() {
 
   async function loadDashboard() {
     const token = await getToken();
-    const data = await apiFetch<ManagerRow[]>("/manager/dashboard", token);
+    const [data, campaignData] = await Promise.all([
+      apiFetch<ManagerRow[]>("/manager/dashboard", token),
+      apiFetch<ManagerCampaigns>("/manager/campaigns", token),
+    ]);
     setRows(data);
+    setCampaigns(campaignData);
     setEditingRows(
       Object.fromEntries(
         data.map((row) => [
@@ -63,6 +94,17 @@ export default function ManagerDashboardPage() {
     await apiFetch(`/users/${renId}`, token, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    });
+    await loadDashboard();
+  }
+
+  async function runCampaignAction(
+    campaignId: string,
+    action: "complete" | "reactivate" | "recompute-metrics"
+  ) {
+    const token = await getToken();
+    await apiFetch(`/campaigns/${campaignId}/${action}`, token, {
+      method: "POST",
     });
     await loadDashboard();
   }
@@ -179,6 +221,96 @@ export default function ManagerDashboardPage() {
           </p>
         ) : null}
       </div>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold">Campaigns</h3>
+          <p className="text-sm text-muted-foreground">
+            Per-campaign and per-channel performance across the team.
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-lg border">
+          {campaigns.campaigns.map((campaign) => (
+            <div
+              key={campaign.id}
+              className="grid grid-cols-8 gap-4 border-b p-4 text-sm last:border-b-0"
+            >
+              <Link
+                href={`/app/campaigns/${campaign.id}`}
+                className="font-medium underline-offset-4 hover:underline"
+              >
+                {campaign.name}
+              </Link>
+              <span>{campaign.channel}</span>
+              <span>{campaign.status}</span>
+              <span>RM {campaign.ad_spending_month} / {campaign.ad_spending}</span>
+              <span>
+                {campaign.leads_generated_month} / {campaign.leads_generated} leads
+              </span>
+              <span>
+                {campaign.conversions_month} / {campaign.conversions} conversions
+              </span>
+              <span>CPL {campaign.cost_per_lead ?? "-"}</span>
+              <div className="space-y-1">
+                <Link
+                  href={`/app/campaigns/${campaign.id}`}
+                  className="rounded-md border px-2 py-1 text-xs"
+                >
+                  Edit
+                </Link>
+                <button
+                  type="button"
+                  className="ml-1 rounded-md border px-2 py-1 text-xs"
+                  onClick={() => {
+                    if (confirm(`Complete ${campaign.name}?`)) {
+                      void runCampaignAction(campaign.id, "complete");
+                    }
+                  }}
+                >
+                  Complete
+                </button>
+                <button
+                  type="button"
+                  className="ml-1 rounded-md border px-2 py-1 text-xs"
+                  onClick={() => void runCampaignAction(campaign.id, "reactivate")}
+                >
+                  Reactivate
+                </button>
+                <button
+                  type="button"
+                  className="ml-1 rounded-md border px-2 py-1 text-xs"
+                  onClick={() =>
+                    void runCampaignAction(campaign.id, "recompute-metrics")
+                  }
+                >
+                  Recompute
+                </button>
+              </div>
+            </div>
+          ))}
+          {!campaigns.campaigns.length ? (
+            <p className="p-4 text-sm text-muted-foreground">
+              No campaigns found.
+            </p>
+          ) : null}
+        </div>
+        <div className="rounded-lg border">
+          <div className="border-b p-4">
+            <h4 className="font-medium">Channel Rollups</h4>
+          </div>
+          {campaigns.channel_rollups.map((rollup) => (
+            <div
+              key={rollup.channel}
+              className="grid grid-cols-4 gap-4 border-b p-4 text-sm last:border-b-0"
+            >
+              <span className="font-medium">{rollup.channel}</span>
+              <span>RM {rollup.ad_spending}</span>
+              <span>{rollup.leads_generated} leads</span>
+              <span>{rollup.conversions} conversions</span>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

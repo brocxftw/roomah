@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.auth import AuthContext, get_auth_context
+from app.campaigns import CampaignCountersService
 from app.models import ListingType, TimelineEventType
 from app.supabase import get_service_supabase
 from app.timeline import emit_timeline_event
@@ -83,6 +84,21 @@ def create_deal(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Assigned REN is deactivated",
         )
+    lead = (
+        supabase.table("leads")
+        .select("id,campaign_id")
+        .eq("id", str(payload.lead_id))
+        .eq("team_id", auth.team_id)
+        .single()
+        .execute()
+        .data
+    )
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lead not found",
+        )
+
     _validate_active_link(payload.lead_id, payload.property_id)
     property_row = (
         supabase.table("properties")
@@ -136,6 +152,7 @@ def create_deal(
         .execute()
         .data[0]
     )
+    CampaignCountersService(supabase).increment_conversion(lead.get("campaign_id"))
 
     supabase.table("leads").update({"status": "Closed"}).eq(
         "id", str(payload.lead_id)

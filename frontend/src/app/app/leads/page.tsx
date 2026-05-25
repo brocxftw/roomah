@@ -13,6 +13,12 @@ type Lead = {
   email: string;
   status: string;
   preferred_location?: string | null;
+  campaign_name?: string | null;
+  campaign?: {
+    name: string;
+    channel: string;
+    status: string;
+  } | null;
   ren?: {
     email: string;
     full_name: string;
@@ -92,11 +98,23 @@ export default function LeadsPage() {
           <Link
             key={lead.id}
             href={`/app/leads/${lead.id}`}
-            className="grid grid-cols-5 gap-4 border-b p-4 last:border-b-0 hover:bg-muted"
+            className="grid grid-cols-6 gap-4 border-b p-4 last:border-b-0 hover:bg-muted"
           >
             <span className="font-medium">{lead.name}</span>
             <span>{lead.phone}</span>
             <span>{lead.email}</span>
+            <span>
+              {lead.campaign ? (
+                <>
+                  <span className="block">{lead.campaign.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {lead.campaign.channel}
+                  </span>
+                </>
+              ) : (
+                "Unattributed"
+              )}
+            </span>
             <span>
               <span className="block">{lead.ren?.full_name ?? "-"}</span>
               <span className="text-xs text-muted-foreground">

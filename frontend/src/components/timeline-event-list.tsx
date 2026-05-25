@@ -12,6 +12,8 @@ type TimelineEvent = {
 
 const eventLabels: Record<string, string> = {
   lead_created: "Lead created",
+  lead_campaign_attributed: "Campaign attributed",
+  lead_campaign_reattributed: "Campaign re-attributed",
   property_linked: "Property linked",
   property_unlinked: "Property unlinked",
   viewing_scheduled: "Viewing scheduled",
@@ -31,6 +33,19 @@ function describeEvent(event: TimelineEvent) {
   }
   if (event.event_type === "lead_status_changed") {
     return `${event.payload.from ?? "-"} -> ${event.payload.to ?? "-"}`;
+  }
+  if (event.event_type === "lead_campaign_attributed") {
+    return `Attributed to ${event.payload.to_campaign_name ?? "campaign"}`;
+  }
+  if (event.event_type === "lead_campaign_reattributed") {
+    if (!event.payload.to_campaign_name) {
+      return `Removed campaign attribution from ${
+        event.payload.from_campaign_name ?? "campaign"
+      }`;
+    }
+    return `Re-attributed from ${
+      event.payload.from_campaign_name ?? "unattributed"
+    } to ${event.payload.to_campaign_name}`;
   }
   if (
     event.event_type === "manual_call" ||

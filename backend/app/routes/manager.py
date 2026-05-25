@@ -103,3 +103,89 @@ def get_manager_dashboard(
         }
         for ren in users
     ]
+
+
+@router.get("/campaigns")
+def get_manager_campaigns(
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict[str, list[dict[str, Any]]]:
+    supabase = get_service_supabase()
+    user = get_current_user_record(auth)
+    require_manager(user)
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    campaigns = (
+        supabase.table("marketing_campaigns")
+        .select("*")
+        .eq("team_id", auth.team_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+    leads = (
+        supabase.table("leads")
+        .select("id,campaign_id,created_at")
+        .eq("team_id", auth.team_id)
+        .execute()
+        .data
+    )
+    campaign_leads_month: dict[str, int] = defaultdict(int)
+    lead_campaign: dict[str, str] = {}
+    for lead in leads:
+        campaign_id = lead.get("campaign_id")
+        if not campaign_id:
+            continue
+        lead_campaign[lead["id"]] = campaign_id
+        created_at = datetime.fromisoformat(lead["created_at"].replace("Z", "+00:00"))
+        if created_at >= month_start:
+            campaign_leads_month[campaign_id] += 1
+
+    deals = (
+        supabase.table("deals")
+        .select("id,lead_id,closed_at")
+        .eq("team_id", auth.team_id)
+        .execute()
+        .data
+    )
+    campaign_conversions_month: dict[str, int] = defaultdict(int)
+    for deal in deals:
+        campaign_id = lead_campaign.get(deal["lead_id"])
+        if not campaign_id:
+            continue
+        closed_at = datetime.fromisoformat(deal["closed_at"].replace("Z", "+00:00"))
+        if closed_at >= month_start:
+            campaign_conversions_month[campaign_id] += 1
+
+    campaign_rows = [
+        {
+            **campaign,
+            "ad_spending_month": campaign["ad_spending"],
+            "leads_generated_month": campaign_leads_month[campaign["id"]],
+            "conversions_month": campaign_conversions_month[campaign["id"]],
+        }
+        for campaign in campaigns
+    ]
+
+    channel_rollups: dict[str, dict[str, Any]] = {}
+    for row in campaign_rows:
+        rollup = channel_rollups.setdefault(
+            row["channel"],
+            {
+                "channel": row["channel"],
+                "ad_spending": Decimal("0"),
+                "leads_generated": 0,
+                "conversions": 0,
+            },
+        )
+        rollup["ad_spending"] += Decimal(str(row["ad_spending"]))
+        rollup["leads_generated"] += int(row["leads_generated"])
+        rollup["conversions"] += int(row["conversions"])
+
+    return {
+        "campaigns": campaign_rows,
+        "channel_rollups": [
+            {**rollup, "ad_spending": str(rollup["ad_spending"])}
+            for rollup in channel_rollups.values()
+        ],
+    }

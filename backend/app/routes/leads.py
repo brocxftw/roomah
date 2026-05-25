@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.auth import AuthContext, get_auth_context
+from app.campaigns import CampaignCountersService
 from app.models import LeadStatus, TimelineEventSource, TimelineEventType
 from app.supabase import get_service_supabase
 from app.timeline import emit_timeline_event
@@ -22,6 +23,7 @@ class LeadCreate(BaseModel):
     budget_max: Decimal | None = Field(default=None, ge=0)
     preferred_location: str | None = None
     preferred_property_type: str | None = None
+    campaign_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_budget_range(self) -> "LeadCreate":
@@ -43,6 +45,7 @@ class LeadUpdate(BaseModel):
     budget_max: Decimal | None = Field(default=None, ge=0)
     preferred_location: str | None = None
     preferred_property_type: str | None = None
+    campaign_id: UUID | None = None
     status: LeadStatus | None = None
 
 
@@ -134,6 +137,47 @@ def _enrich_timeline_events(
     ]
 
 
+def _get_campaign_summary(
+    *,
+    auth: AuthContext,
+    campaign_id: str | None,
+) -> dict[str, Any] | None:
+    if not campaign_id:
+        return None
+
+    campaign = (
+        get_service_supabase()
+        .table("marketing_campaigns")
+        .select("id,name,channel,status")
+        .eq("id", campaign_id)
+        .eq("team_id", auth.team_id)
+        .single()
+        .execute()
+        .data
+    )
+    return campaign
+
+
+def _get_campaign_summaries(
+    *,
+    auth: AuthContext,
+    campaign_ids: set[str],
+) -> dict[str, dict[str, Any]]:
+    if not campaign_ids:
+        return {}
+
+    campaigns = (
+        get_service_supabase()
+        .table("marketing_campaigns")
+        .select("id,name,channel,status")
+        .eq("team_id", auth.team_id)
+        .in_("id", sorted(campaign_ids))
+        .execute()
+        .data
+    )
+    return {campaign["id"]: campaign for campaign in campaigns}
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_lead(
     payload: LeadCreate,
@@ -141,6 +185,14 @@ def create_lead(
 ) -> dict[str, Any]:
     supabase = get_service_supabase()
     user = get_current_user_record(auth)
+    counters = CampaignCountersService(supabase)
+    campaign = None
+    if payload.campaign_id is not None:
+        campaign = counters.validate_campaign_for_attribution(
+            campaign_id=payload.campaign_id,
+            auth=auth,
+        )
+
     insert_payload = payload.model_dump(mode="json")
     insert_payload.update(
         {
@@ -151,6 +203,12 @@ def create_lead(
     )
     response = supabase.table("leads").insert(insert_payload).execute()
     lead = response.data[0]
+    if payload.campaign_id is not None:
+        counters.apply_lead_campaign_attribution_counters(
+            lead_id=lead["id"],
+            from_campaign_id=None,
+            to_campaign_id=payload.campaign_id,
+        )
 
     emit_timeline_event(
         supabase=supabase,
@@ -160,6 +218,19 @@ def create_lead(
         payload={"lead_id": lead["id"]},
         created_by=user["id"],
     )
+    if campaign is not None:
+        emit_timeline_event(
+            supabase=supabase,
+            auth=auth,
+            lead_id=lead["id"],
+            event_type=TimelineEventType.LEAD_CAMPAIGN_ATTRIBUTED,
+            source=TimelineEventSource.USER,
+            payload={
+                "to_campaign_id": campaign["id"],
+                "to_campaign_name": campaign["name"],
+            },
+            created_by=user["id"],
+        )
 
     return lead
 
@@ -182,7 +253,21 @@ def list_leads(
         auth,
         {lead["ren_id"] for lead in leads if lead.get("ren_id")},
     )
-    return [{**lead, "ren": ren_refs.get(lead["ren_id"])} for lead in leads]
+    campaign_refs = _get_campaign_summaries(
+        auth=auth,
+        campaign_ids={lead["campaign_id"] for lead in leads if lead.get("campaign_id")},
+    )
+    return [
+        {
+            **lead,
+            "ren": ren_refs.get(lead["ren_id"]),
+            "campaign": campaign_refs.get(lead.get("campaign_id")),
+            "campaign_name": (campaign_refs.get(lead.get("campaign_id")) or {}).get(
+                "name"
+            ),
+        }
+        for lead in leads
+    ]
 
 
 @router.get("/{lead_id}")
@@ -215,6 +300,10 @@ def get_lead(
     return {
         **lead,
         "ren": ren_refs.get(lead["ren_id"]),
+        "campaign": _get_campaign_summary(
+            auth=auth,
+            campaign_id=lead.get("campaign_id"),
+        ),
         "linked_properties": links.data,
         "timeline": timeline_events,
     }
@@ -256,6 +345,40 @@ def update_lead(
     if "ren_id" in update_payload and user["role"] != "MANAGER":
         require_manager(user)
 
+    campaign_was_changed = "campaign_id" in update_payload and (
+        update_payload.get("campaign_id") != lead.get("campaign_id")
+    )
+    from_campaign = None
+    to_campaign = None
+    if campaign_was_changed:
+        if lead["status"] == LeadStatus.CLOSED.value and user["role"] != "MANAGER":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only managers can re-attribute a closed lead",
+            )
+        counters = CampaignCountersService(supabase)
+        from_campaign = _get_campaign_summary(
+            auth=auth,
+            campaign_id=lead.get("campaign_id"),
+        )
+        if update_payload.get("campaign_id") is not None:
+            to_campaign = counters.validate_campaign_for_attribution(
+                campaign_id=update_payload["campaign_id"],
+                auth=auth,
+                allow_completed=True,
+            )
+
+        counters.apply_lead_campaign_attribution_counters(
+            lead_id=lead_id,
+            from_campaign_id=lead.get("campaign_id"),
+            to_campaign_id=update_payload.get("campaign_id"),
+        )
+        if lead["status"] == LeadStatus.CLOSED.value:
+            counters.swap_conversion(
+                from_campaign_id=lead.get("campaign_id"),
+                to_campaign_id=update_payload.get("campaign_id"),
+            )
+
     response = (
         supabase.table("leads")
         .update(update_payload)
@@ -275,6 +398,36 @@ def update_lead(
             payload={"from": lead["status"], "to": update_payload["status"]},
             created_by=user["id"],
         )
+
+    if campaign_was_changed:
+        if lead.get("campaign_id") is None and to_campaign is not None:
+            emit_timeline_event(
+                supabase=supabase,
+                auth=auth,
+                lead_id=lead_id,
+                event_type=TimelineEventType.LEAD_CAMPAIGN_ATTRIBUTED,
+                source=TimelineEventSource.USER,
+                payload={
+                    "to_campaign_id": to_campaign["id"],
+                    "to_campaign_name": to_campaign["name"],
+                },
+                created_by=user["id"],
+            )
+        else:
+            emit_timeline_event(
+                supabase=supabase,
+                auth=auth,
+                lead_id=lead_id,
+                event_type=TimelineEventType.LEAD_CAMPAIGN_REATTRIBUTED,
+                source=TimelineEventSource.USER,
+                payload={
+                    "from_campaign_id": (from_campaign or {}).get("id"),
+                    "from_campaign_name": (from_campaign or {}).get("name"),
+                    "to_campaign_id": (to_campaign or {}).get("id"),
+                    "to_campaign_name": (to_campaign or {}).get("name"),
+                },
+                created_by=user["id"],
+            )
 
     return updated_lead
 

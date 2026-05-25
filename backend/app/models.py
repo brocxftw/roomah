@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class UserRole(StrEnum):
@@ -31,6 +31,24 @@ class ListingType(StrEnum):
     BOTH = "Both"
 
 
+class CampaignChannel(StrEnum):
+    FACEBOOK = "Facebook"
+    INSTAGRAM = "Instagram"
+    GOOGLE = "Google"
+    TIKTOK = "TikTok"
+    EMAIL = "Email"
+    REFERRAL = "Referral"
+    WALK_IN = "Walk_In"
+    OTHER = "Other"
+
+
+class CampaignStatus(StrEnum):
+    DRAFT = "Draft"
+    ACTIVE = "Active"
+    PAUSED = "Paused"
+    COMPLETED = "Completed"
+
+
 class LeadPropertyStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -51,6 +69,8 @@ class TimelineEventType(StrEnum):
     LEAD_CREATED = "lead_created"
     PROPERTY_LINKED = "property_linked"
     PROPERTY_UNLINKED = "property_unlinked"
+    LEAD_CAMPAIGN_ATTRIBUTED = "lead_campaign_attributed"
+    LEAD_CAMPAIGN_REATTRIBUTED = "lead_campaign_reattributed"
     VIEWING_SCHEDULED = "viewing_scheduled"
     VIEWING_COMPLETED = "viewing_completed"
     VIEWING_REASSIGNED = "viewing_reassigned"
@@ -103,10 +123,88 @@ class Lead(RoomahModel):
     budget_max: Decimal | None = Field(default=None, ge=0)
     preferred_location: str | None = None
     preferred_property_type: str | None = None
+    campaign_id: UUID | None = None
     status: LeadStatus
     created_at: datetime
     updated_at: datetime
     last_interaction_at: datetime
+
+
+class MarketingCampaign(RoomahModel):
+    id: UUID
+    team_id: UUID
+    name: str
+    channel: CampaignChannel
+    status: CampaignStatus
+    campaign_start_date: date
+    campaign_end_date: date | None = None
+    ad_spending: Decimal = Field(ge=0)
+    impressions: int = Field(ge=0)
+    clicks: int = Field(ge=0)
+    leads_generated: int = Field(ge=0)
+    conversions: int = Field(ge=0)
+    cost_per_lead: Decimal | None = Field(default=None, ge=0)
+    conversion_rate: Decimal | None = Field(default=None, ge=0)
+    budget: Decimal | None = Field(default=None, ge=0)
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketingCampaignSummary(RoomahModel):
+    id: UUID
+    name: str
+    channel: CampaignChannel
+    status: CampaignStatus
+
+
+class MarketingCampaignCreate(RoomahModel):
+    name: str = Field(min_length=1)
+    channel: CampaignChannel
+    campaign_start_date: date
+    campaign_end_date: date | None = None
+    ad_spending: Decimal = Field(default=Decimal("0"), ge=0)
+    impressions: int = Field(default=0, ge=0)
+    clicks: int = Field(default=0, ge=0)
+    budget: Decimal | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_campaign_metrics(self) -> "MarketingCampaignCreate":
+        if self.campaign_end_date is not None and (
+            self.campaign_end_date < self.campaign_start_date
+        ):
+            raise ValueError("campaign_end_date must be after campaign_start_date")
+        if self.clicks > self.impressions:
+            raise ValueError("clicks must be less than or equal to impressions")
+        return self
+
+
+class MarketingCampaignUpdate(RoomahModel):
+    name: str | None = Field(default=None, min_length=1)
+    channel: CampaignChannel | None = None
+    status: CampaignStatus | None = None
+    campaign_start_date: date | None = None
+    campaign_end_date: date | None = None
+    ad_spending: Decimal | None = Field(default=None, ge=0)
+    impressions: int | None = Field(default=None, ge=0)
+    clicks: int | None = Field(default=None, ge=0)
+    budget: Decimal | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_campaign_metrics(self) -> "MarketingCampaignUpdate":
+        if (
+            self.campaign_start_date is not None
+            and self.campaign_end_date is not None
+            and self.campaign_end_date < self.campaign_start_date
+        ):
+            raise ValueError("campaign_end_date must be after campaign_start_date")
+        if (
+            self.clicks is not None
+            and self.impressions is not None
+            and self.clicks > self.impressions
+        ):
+            raise ValueError("clicks must be less than or equal to impressions")
+        return self
 
 
 class Property(RoomahModel):
@@ -196,3 +294,15 @@ class TimelineEvent(RoomahModel):
     payload: dict[str, Any]
     created_by: UUID | None = None
     created_at: datetime
+
+
+class LeadCampaignAttributedPayload(RoomahModel):
+    to_campaign_id: UUID
+    to_campaign_name: str
+
+
+class LeadCampaignReattributedPayload(RoomahModel):
+    from_campaign_id: UUID | None = None
+    from_campaign_name: str | None = None
+    to_campaign_id: UUID | None = None
+    to_campaign_name: str | None = None

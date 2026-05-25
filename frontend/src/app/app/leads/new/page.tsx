@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+import { CampaignPicker } from "@/components/campaign-picker";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
 
@@ -25,9 +26,10 @@ export default function NewLeadPage() {
     budget_max: "",
     preferred_location: "",
     preferred_property_type: "",
+    campaign_id: null as string | null,
   });
 
-  const updateField = (field: keyof typeof form, value: string) => {
+  const updateField = (field: keyof typeof form, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
@@ -97,6 +99,10 @@ export default function NewLeadPage() {
             placeholder="Email"
             className="w-full rounded-md border px-3 py-2"
             required
+          />
+          <CampaignPicker
+            value={form.campaign_id}
+            onChange={(campaignId) => updateField("campaign_id", campaignId)}
           />
         </div>
       ) : null}

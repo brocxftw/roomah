@@ -8,9 +8,16 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.auth import AuthContext
 from app import users as user_helpers
-from app.models import LeadStatus, ListingType, PropertyStatus, TimelineEventType
+from app.auth import AuthContext
+from app.models import (
+    CampaignChannel,
+    LeadStatus,
+    ListingType,
+    PropertyStatus,
+    TimelineEventType,
+)
+from app.routes import campaigns as campaign_routes
 from app.routes import deals as deal_routes
 from app.routes import leads as lead_routes
 from app.routes import properties as property_routes
@@ -184,6 +191,37 @@ class FakeQuery:
         return False
 
 
+class FakeRpc:
+    def __init__(
+        self,
+        supabase: FakeSupabase,
+        function_name: str,
+        params: dict[str, Any],
+    ) -> None:
+        self.supabase = supabase
+        self.function_name = function_name
+        self.params = params
+
+    def execute(self) -> FakeResponse:
+        if self.function_name != "apply_lead_campaign_attribution_counters":
+            raise AssertionError(f"Unsupported RPC: {self.function_name}")
+
+        from_campaign = self.params.get("p_from_campaign")
+        to_campaign = self.params.get("p_to_campaign")
+        if from_campaign and from_campaign != to_campaign:
+            for campaign in self.supabase.tables["marketing_campaigns"]:
+                if campaign["id"] == from_campaign:
+                    campaign["leads_generated"] = max(
+                        int(campaign["leads_generated"]) - 1,
+                        0,
+                    )
+        if to_campaign and from_campaign != to_campaign:
+            for campaign in self.supabase.tables["marketing_campaigns"]:
+                if campaign["id"] == to_campaign:
+                    campaign["leads_generated"] = int(campaign["leads_generated"]) + 1
+        return FakeResponse(None)
+
+
 class FakeSupabase:
     def __init__(self) -> None:
         self.counters: dict[str, int] = {}
@@ -205,6 +243,7 @@ class FakeSupabase:
             "lead_properties": [],
             "viewings": [],
             "deals": [],
+            "marketing_campaigns": [],
             "timeline_events": [],
         }
 
@@ -224,6 +263,9 @@ class FakeSupabase:
 
     def table(self, table_name: str) -> FakeQuery:
         return FakeQuery(self, table_name)
+
+    def rpc(self, function_name: str, params: dict[str, Any]) -> FakeRpc:
+        return FakeRpc(self, function_name, params)
 
     def next_id(self, table_name: str) -> str:
         self.counters[table_name] = self.counters.get(table_name, 0) + 1
@@ -256,7 +298,14 @@ def property_required_fields(**overrides: Any) -> dict[str, Any]:
 
 
 def patch_supabase(monkeypatch: pytest.MonkeyPatch, supabase: FakeSupabase) -> None:
-    modules = [lead_routes, property_routes, viewing_routes, deal_routes, user_routes]
+    modules = [
+        campaign_routes,
+        lead_routes,
+        property_routes,
+        viewing_routes,
+        deal_routes,
+        user_routes,
+    ]
     for module in modules:
         monkeypatch.setattr(module, "get_service_supabase", lambda: supabase)
     monkeypatch.setattr(user_helpers, "get_service_supabase", lambda: supabase)
@@ -413,6 +462,132 @@ def test_property_cascade_marks_other_leads_lost_and_revive_is_allowed(
         and event["payload"] == {"from": "Lost", "to": "Active"}
         for event in supabase.tables["timeline_events"]
     )
+
+
+def test_campaign_attribution_counters_and_deal_conversion(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    campaign = campaign_routes.create_campaign(
+        payload=campaign_routes.MarketingCampaignCreate(
+            name="Facebook Leads",
+            channel=CampaignChannel.FACEBOOK,
+            campaign_start_date=datetime.now(UTC).date(),
+        ),
+        auth=auth,
+    )
+    supabase.table("marketing_campaigns").update({"status": "Active"}).eq(
+        "id",
+        campaign["id"],
+    ).execute()
+
+    lead = lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Campaign Buyer",
+            phone="60123456789",
+            email="campaign@example.com",
+            campaign_id=campaign["id"],
+        ),
+        auth=auth,
+    )
+    property_row = property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Campaign Condo",
+            type="Condo",
+            **property_required_fields(),
+            listing_type=ListingType.SALE,
+            listing_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+    lead_routes.link_property(
+        lead_id=lead["id"],
+        payload=lead_routes.LeadPropertyLinkCreate(property_id=property_row["id"]),
+        auth=auth,
+    )
+    deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    campaign_after = supabase.tables["marketing_campaigns"][0]
+    assert campaign_after["leads_generated"] == 1
+    assert campaign_after["conversions"] == 1
+    assert any(
+        event["event_type"] == TimelineEventType.LEAD_CAMPAIGN_ATTRIBUTED.value
+        and event["lead_id"] == lead["id"]
+        for event in supabase.tables["timeline_events"]
+    )
+
+
+def test_lost_cascade_does_not_touch_other_lead_campaign_counters(
+    monkeypatch,
+) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    closing_campaign = campaign_routes.create_campaign(
+        payload=campaign_routes.MarketingCampaignCreate(
+            name="Closing Campaign",
+            channel=CampaignChannel.GOOGLE,
+            campaign_start_date=datetime.now(UTC).date(),
+        ),
+        auth=auth,
+    )
+    other_campaign = campaign_routes.create_campaign(
+        payload=campaign_routes.MarketingCampaignCreate(
+            name="Other Campaign",
+            channel=CampaignChannel.FACEBOOK,
+            campaign_start_date=datetime.now(UTC).date(),
+        ),
+        auth=auth,
+    )
+    for campaign in supabase.tables["marketing_campaigns"]:
+        campaign["status"] = "Active"
+
+    closing_lead, property_row, _viewing = create_lead_property_link_viewing(
+        supabase,
+        auth,
+    )
+    lead_routes.update_lead(
+        lead_id=closing_lead["id"],
+        payload=lead_routes.LeadUpdate(campaign_id=closing_campaign["id"]),
+        auth=auth,
+    )
+    other_lead = lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Other Campaign Lead",
+            phone="60987654321",
+            email="othercampaign@example.com",
+            campaign_id=other_campaign["id"],
+        ),
+        auth=auth,
+    )
+    lead_routes.link_property(
+        lead_id=other_lead["id"],
+        payload=lead_routes.LeadPropertyLinkCreate(property_id=property_row["id"]),
+        auth=auth,
+    )
+
+    deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=closing_lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    campaigns_by_id = {
+        campaign["id"]: campaign for campaign in supabase.tables["marketing_campaigns"]
+    }
+    assert campaigns_by_id[closing_campaign["id"]]["conversions"] == 1
+    assert campaigns_by_id[other_campaign["id"]]["leads_generated"] == 1
+    assert campaigns_by_id[other_campaign["id"]]["conversions"] == 0
 
 
 def test_manager_can_reassign_lead_and_ren_cannot(monkeypatch) -> None:
@@ -615,9 +790,7 @@ def test_property_search_matches_owner_and_structured_address(monkeypatch) -> No
     assert [property_row["name"] for property_row in city_matches] == [
         "Skyline Residence"
     ]
-    assert [property_row["name"] for property_row in state_matches] == [
-        "Subang Rental"
-    ]
+    assert [property_row["name"] for property_row in state_matches] == ["Subang Rental"]
 
 
 def test_linking_mismatched_listing_type_returns_warning(monkeypatch) -> None:

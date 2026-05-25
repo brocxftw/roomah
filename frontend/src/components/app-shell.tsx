@@ -61,6 +61,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/app/properties" className="text-sm font-medium">
               Properties
             </Link>
+            <Link href="/app/campaigns" className="text-sm font-medium">
+              Campaigns
+            </Link>
             <Link href="/app/viewings" className="text-sm font-medium">
               Viewings
             </Link>

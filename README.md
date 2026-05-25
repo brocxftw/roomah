@@ -57,6 +57,12 @@ The API runs at `http://localhost:8000`.
 
 `properties.price` is a deprecated transitional column kept for compatibility while ROOMAH moves to listing-aware pricing. New code should read and write `properties.listing_price` for sale listings and `properties.expected_rental` for rental listings. During the transition, the backend keeps `price` synchronized with the canonical listing value; a follow-on cleanup change will remove `price`.
 
+### Marketing Campaigns
+
+ROOMAH supports operational marketing attribution through `/app/campaigns` and the backend `/campaigns` API. Campaigns are team-scoped and track channel, lifecycle status (`Draft`, `Active`, `Paused`, `Completed`), ad spend, impressions, clicks, generated leads, conversions, cost-per-lead, and conversion rate.
+
+Leads can optionally store `campaign_id`; campaign counters update when leads are attributed or deals close. The schema mirrors the downstream silver `marketing_campaigns` table so Databricks/Power BI can source campaign performance from the operational store.
+
 ### Backend Environment
 
 Create `backend/.env`:

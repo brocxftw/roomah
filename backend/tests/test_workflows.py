@@ -53,6 +53,10 @@ class FakeQuery:
         self.filters.append(("in", column, values))
         return self
 
+    def or_(self, expression: str) -> FakeQuery:
+        self.filters.append(("or", "", expression))
+        return self
+
     def gte(self, column: str, value: Any) -> FakeQuery:
         self.filters.append(("gte", column, value))
         return self
@@ -136,11 +140,14 @@ class FakeQuery:
     def _filtered_rows(self) -> list[dict[str, Any]]:
         rows = self.supabase.tables[self.table_name]
         for operator, column, value in self.filters:
-            rows = [
-                row
-                for row in rows
-                if self._matches(row.get(column), operator=operator, value=value)
-            ]
+            if operator == "or":
+                rows = [row for row in rows if self._matches_or(row, value)]
+            else:
+                rows = [
+                    row
+                    for row in rows
+                    if self._matches(row.get(column), operator=operator, value=value)
+                ]
         return rows
 
     def _advance_lead_interaction(self, event: dict[str, Any]) -> None:
@@ -163,6 +170,18 @@ class FakeQuery:
         if operator == "lt":
             return str(actual) < str(value)
         raise AssertionError(f"Unsupported operator: {operator}")
+
+    @staticmethod
+    def _matches_or(row: dict[str, Any], expression: str) -> bool:
+        for clause in expression.split(","):
+            parts = clause.split(".ilike.")
+            if len(parts) != 2:
+                continue
+            column, pattern = parts
+            needle = pattern.strip("%").lower()
+            if needle in str(row.get(column, "")).lower():
+                return True
+        return False
 
 
 class FakeSupabase:
@@ -221,6 +240,21 @@ def auth_context(user_id: str, role: str) -> AuthContext:
     )
 
 
+def property_required_fields(**overrides: Any) -> dict[str, Any]:
+    fields: dict[str, Any] = {
+        "owner_name": "Owner One",
+        "owner_email": "owner@example.com",
+        "owner_phone": "60112223333",
+        "address_line_1": "12 Jalan Kiara",
+        "address_line_2": None,
+        "city": "Mont Kiara",
+        "state": "Kuala Lumpur",
+        "postcode": "50480",
+    }
+    fields.update(overrides)
+    return fields
+
+
 def patch_supabase(monkeypatch: pytest.MonkeyPatch, supabase: FakeSupabase) -> None:
     modules = [lead_routes, property_routes, viewing_routes, deal_routes, user_routes]
     for module in modules:
@@ -256,7 +290,7 @@ def create_lead_property_link_viewing(
         payload=property_routes.PropertyCreate(
             name="KL Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(),
             price=Decimal("500000"),
             listing_price=Decimal("500000"),
             status=PropertyStatus.ACTIVE,
@@ -422,9 +456,47 @@ def test_sale_property_requires_listing_price() -> None:
         property_routes.PropertyCreate(
             name="Sale Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(),
             listing_type=ListingType.SALE,
         )
+
+
+def test_property_creation_requires_owner_details() -> None:
+    with pytest.raises(ValueError, match="owner_name"):
+        property_routes.PropertyCreate(
+            name="Ownerless Condo",
+            type="Condo",
+            address_line_1="12 Jalan Kiara",
+            city="Mont Kiara",
+            state="Kuala Lumpur",
+            postcode="50480",
+            listing_price=Decimal("500000"),
+        )
+
+
+def test_property_creation_requires_structured_address() -> None:
+    with pytest.raises(ValueError, match="address_line_1"):
+        property_routes.PropertyCreate(
+            name="Addressless Condo",
+            type="Condo",
+            owner_name="Owner One",
+            owner_email="owner@example.com",
+            owner_phone="60112223333",
+            listing_price=Decimal("500000"),
+        )
+
+
+def test_property_rejects_legacy_location_only_payload() -> None:
+    with pytest.raises(ValueError, match="location"):
+        property_routes.PropertyCreate(
+            name="Legacy Condo",
+            type="Condo",
+            location="KL",  # type: ignore[call-arg]
+            listing_price=Decimal("500000"),
+        )
+
+    with pytest.raises(ValueError, match="location"):
+        property_routes.PropertyUpdate(location="KL")  # type: ignore[call-arg]
 
 
 def test_rental_property_requires_expected_rental() -> None:
@@ -432,7 +504,7 @@ def test_rental_property_requires_expected_rental() -> None:
         property_routes.PropertyCreate(
             name="Rental Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(),
             listing_type=ListingType.RENTAL,
         )
 
@@ -442,7 +514,7 @@ def test_both_property_requires_both_prices() -> None:
         property_routes.PropertyCreate(
             name="Dual Listing",
             type="Condo",
-            location="KL",
+            **property_required_fields(),
             listing_type=ListingType.BOTH,
             listing_price=Decimal("500000"),
         )
@@ -453,7 +525,7 @@ def test_sale_property_rejects_expected_rental() -> None:
         property_routes.PropertyCreate(
             name="Bad Sale Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(),
             listing_type=ListingType.SALE,
             listing_price=Decimal("500000"),
             expected_rental=Decimal("2500"),
@@ -468,7 +540,7 @@ def test_property_listing_type_filter(monkeypatch) -> None:
         payload=property_routes.PropertyCreate(
             name="Rental Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(city="Bangsar", postcode="59100"),
             listing_type=ListingType.RENTAL,
             expected_rental=Decimal("2500"),
         ),
@@ -478,7 +550,7 @@ def test_property_listing_type_filter(monkeypatch) -> None:
         payload=property_routes.PropertyCreate(
             name="Sale Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(city="Mont Kiara", postcode="50480"),
             listing_type=ListingType.SALE,
             listing_price=Decimal("500000"),
         ),
@@ -488,6 +560,64 @@ def test_property_listing_type_filter(monkeypatch) -> None:
     rentals = property_routes.list_properties(listing_type="Rental", auth=auth)
 
     assert [property_row["name"] for property_row in rentals] == ["Rental Condo"]
+
+
+def test_property_search_matches_owner_and_structured_address(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Skyline Residence",
+            type="Condo",
+            **property_required_fields(
+                owner_name="Sarah Landlord",
+                owner_email="sarah@example.com",
+                owner_phone="60177778888",
+                city="Mont Kiara",
+                state="Kuala Lumpur",
+                postcode="50480",
+            ),
+            listing_type=ListingType.SALE,
+            listing_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+    property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Subang Rental",
+            type="Condo",
+            **property_required_fields(
+                owner_name="Other Owner",
+                owner_email="other@example.com",
+                owner_phone="60199990000",
+                city="Subang Jaya",
+                state="Selangor",
+                postcode="47500",
+            ),
+            listing_type=ListingType.RENTAL,
+            expected_rental=Decimal("2200"),
+        ),
+        auth=auth,
+    )
+
+    owner_matches = property_routes.list_properties(q="sarah", auth=auth)
+    postcode_matches = property_routes.list_properties(q="50480", auth=auth)
+    city_matches = property_routes.list_properties(city="Mont Kiara", auth=auth)
+    state_matches = property_routes.list_properties(state="Selangor", auth=auth)
+
+    assert [property_row["name"] for property_row in owner_matches] == [
+        "Skyline Residence"
+    ]
+    assert [property_row["name"] for property_row in postcode_matches] == [
+        "Skyline Residence"
+    ]
+    assert [property_row["name"] for property_row in city_matches] == [
+        "Skyline Residence"
+    ]
+    assert [property_row["name"] for property_row in state_matches] == [
+        "Subang Rental"
+    ]
 
 
 def test_linking_mismatched_listing_type_returns_warning(monkeypatch) -> None:
@@ -507,7 +637,7 @@ def test_linking_mismatched_listing_type_returns_warning(monkeypatch) -> None:
         payload=property_routes.PropertyCreate(
             name="Rental Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(),
             listing_type=ListingType.RENTAL,
             expected_rental=Decimal("2500"),
         ),
@@ -560,7 +690,7 @@ def test_rental_deal_persists_submitted_sale_price(monkeypatch) -> None:
         payload=property_routes.PropertyCreate(
             name="Rental Condo",
             type="Condo",
-            location="KL",
+            **property_required_fields(),
             listing_type=ListingType.RENTAL,
             expected_rental=Decimal("2500"),
         ),

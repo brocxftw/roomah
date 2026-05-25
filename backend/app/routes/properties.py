@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from postgrest.exceptions import APIError
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.auth import AuthContext, get_auth_context
 from app.models import ListingType, PropertyStatus
@@ -16,9 +16,18 @@ router = APIRouter(prefix="/properties", tags=["properties"])
 
 
 class PropertyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1)
     type: str = Field(min_length=1)
-    location: str = Field(min_length=1)
+    owner_name: str = Field(min_length=1)
+    owner_email: EmailStr
+    owner_phone: str = Field(min_length=1)
+    address_line_1: str = Field(min_length=1)
+    address_line_2: str | None = None
+    city: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+    postcode: str = Field(pattern=r"^\d{5}$")
     price: Decimal | None = Field(default=None, ge=0)
     listing_type: ListingType = ListingType.SALE
     market_value: Decimal | None = Field(default=None, ge=0)
@@ -46,9 +55,18 @@ class PropertyCreate(BaseModel):
 
 
 class PropertyUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1)
     type: str | None = Field(default=None, min_length=1)
-    location: str | None = Field(default=None, min_length=1)
+    owner_name: str | None = Field(default=None, min_length=1)
+    owner_email: EmailStr | None = None
+    owner_phone: str | None = Field(default=None, min_length=1)
+    address_line_1: str | None = Field(default=None, min_length=1)
+    address_line_2: str | None = None
+    city: str | None = Field(default=None, min_length=1)
+    state: str | None = Field(default=None, min_length=1)
+    postcode: str | None = Field(default=None, pattern=r"^\d{5}$")
     price: Decimal | None = Field(default=None, ge=0)
     listing_type: ListingType | None = None
     market_value: Decimal | None = Field(default=None, ge=0)
@@ -220,6 +238,8 @@ def list_properties(
     type_filter: str | None = None,
     status_filter: PropertyStatus | None = None,
     listing_type: str | None = None,
+    city: str | None = None,
+    state: str | None = None,
     price_min: Decimal | None = None,
     price_max: Decimal | None = None,
     auth: AuthContext = Depends(get_auth_context),
@@ -227,7 +247,19 @@ def list_properties(
     user = get_current_user_record(auth)
     query = _property_query_for_user(auth, user).order("updated_at", desc=True)
     if q:
-        query = query.or_(f"name.ilike.%{q}%,location.ilike.%{q}%")
+        query = query.or_(
+            ",".join(
+                [
+                    f"name.ilike.%{q}%",
+                    f"owner_name.ilike.%{q}%",
+                    f"owner_email.ilike.%{q}%",
+                    f"owner_phone.ilike.%{q}%",
+                    f"city.ilike.%{q}%",
+                    f"state.ilike.%{q}%",
+                    f"postcode.ilike.%{q}%",
+                ]
+            )
+        )
     if type_filter:
         query = query.eq("type", type_filter)
     if status_filter:
@@ -244,6 +276,10 @@ def list_properties(
                 detail=f"Invalid listing_type value(s): {', '.join(invalid)}",
             )
         query = query.in_("listing_type", listing_types)
+    if city:
+        query = query.eq("city", city)
+    if state:
+        query = query.eq("state", state)
     if price_min is not None:
         query = query.gte("price", str(price_min))
     if price_max is not None:

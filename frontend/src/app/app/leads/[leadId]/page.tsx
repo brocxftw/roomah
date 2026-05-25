@@ -9,8 +9,12 @@ import {
   TimelineEventList,
   type TimelineEvent,
 } from "@/components/timeline-event-list";
+import { RecordPicker, type RecordPickerGroup } from "@/components/record-picker";
 import { apiFetch } from "@/lib/api";
+import { propertyAddressSummary } from "@/lib/malaysia-areas";
 import { useAuth } from "@/lib/use-auth";
+
+type ListingType = "Sale" | "Rental" | "Both";
 
 type LeadDetail = {
   id: string;
@@ -31,20 +35,40 @@ type LinkedProperty = {
   properties: {
     id: string;
     name: string;
-    listing_type: "Sale" | "Rental" | "Both";
+    type?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postcode?: string | null;
+    listing_type: ListingType;
+    status?: string | null;
     listing_price?: number | null;
     expected_rental?: number | null;
   };
+};
+
+type PropertyOption = LinkedProperty["properties"] & {
+  type: string;
+  city: string;
+  state: string;
+  postcode: string;
+  status: string;
 };
 
 type LinkPropertyResponse = {
   warnings?: string[];
 };
 
+function propertyDescription(property: LinkedProperty["properties"]) {
+  return [property.type, propertyAddressSummary(property), property.status]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export default function LeadDetailPage() {
   const { leadId } = useParams<{ leadId: string }>();
   const { getToken } = useAuth();
   const [lead, setLead] = useState<LeadDetail | null>(null);
+  const [properties, setProperties] = useState<PropertyOption[]>([]);
   const [propertyId, setPropertyId] = useState("");
   const [dealPropertyId, setDealPropertyId] = useState("");
   const [dealType, setDealType] = useState<"Sale" | "Rental">("Sale");
@@ -63,9 +87,20 @@ export default function LeadDetailPage() {
     setLead(data);
   }
 
+  async function loadProperties() {
+    const token = await getToken();
+    const data = await apiFetch<PropertyOption[]>("/properties", token);
+    setProperties(
+      data.filter((property) => ["Active", "Pending"].includes(property.status))
+    );
+  }
+
   useEffect(() => {
     void loadLead().catch((err) => {
       setError(err instanceof Error ? err.message : "Failed to load lead");
+    });
+    void loadProperties().catch((err) => {
+      setError(err instanceof Error ? err.message : "Failed to load properties");
     });
     // loadLead depends on stable route/auth values and is intentionally kept local.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,6 +188,36 @@ export default function LeadDetailPage() {
     (link) =>
       link.status === "active" && link.properties.id === dealPropertyId
   )?.properties;
+  const activeLinkedProperties = lead.linked_properties.filter(
+    (link) => link.status === "active"
+  );
+  const activeLinkedPropertyIds = new Set(
+    activeLinkedProperties.map((link) => link.properties.id)
+  );
+  const linkPropertyGroups: RecordPickerGroup[] = [
+    {
+      label: "Available properties",
+      options: properties
+        .filter((property) => !activeLinkedPropertyIds.has(property.id))
+        .map((property) => ({
+          value: property.id,
+          label: property.name,
+          description: propertyDescription(property),
+          badge: property.listing_type,
+        })),
+    },
+  ];
+  const dealPropertyGroups: RecordPickerGroup[] = [
+    {
+      label: "Active linked properties",
+      options: activeLinkedProperties.map((link) => ({
+        value: link.properties.id,
+        label: link.properties.name,
+        description: propertyDescription(link.properties),
+        badge: link.properties.listing_type,
+      })),
+    },
+  ];
 
   const selectDealProperty = (propertyId: string) => {
     setDealPropertyId(propertyId);
@@ -245,13 +310,17 @@ export default function LeadDetailPage() {
             ))}
           </div>
           <div className="mt-4 flex gap-2">
-            <input
+            <div className="flex-1">
+              <RecordPicker
+                label="Property to link"
               value={propertyId}
-              onChange={(event) => setPropertyId(event.target.value)}
-              placeholder="Property UUID"
-              className="w-full rounded-md border px-3 py-2"
+                onChange={setPropertyId}
+                groups={linkPropertyGroups}
+                placeholder="Select property"
+                searchPlaceholder="Search property name, type, location, or status"
               required
-            />
+              />
+            </div>
             <button
               type="submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
@@ -300,21 +369,15 @@ export default function LeadDetailPage() {
       <form onSubmit={closeDeal} className="rounded-lg border p-4">
         <h3 className="font-medium">Close Deal</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <select
+          <RecordPicker
+            label="Linked property"
             value={dealPropertyId}
-            onChange={(event) => selectDealProperty(event.target.value)}
-            className="rounded-md border px-3 py-2"
+            onChange={selectDealProperty}
+            groups={dealPropertyGroups}
+            placeholder="Select linked property"
+            searchPlaceholder="Search linked property"
             required
-          >
-            <option value="">Select linked property</option>
-            {lead.linked_properties
-              .filter((link) => link.status === "active")
-              .map((link) => (
-                <option key={link.properties.id} value={link.properties.id}>
-                  {link.properties.name} ({link.properties.listing_type})
-                </option>
-              ))}
-          </select>
+          />
           {selectedDealProperty?.listing_type === "Both" ? (
             <div className="flex items-center gap-4 rounded-md border px-3 py-2">
               <label className="flex items-center gap-2 text-sm">

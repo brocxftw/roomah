@@ -4,6 +4,10 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
+import {
+  MALAYSIAN_STATES,
+  suggestCityFromAddress,
+} from "@/lib/malaysia-areas";
 import { useAuth } from "@/lib/use-auth";
 
 type Property = {
@@ -22,7 +26,14 @@ export default function NewPropertyPage() {
   const [form, setForm] = useState({
     name: "",
     type: "",
-    location: "",
+    owner_name: "",
+    owner_email: "",
+    owner_phone: "",
+    address_line_1: "",
+    address_line_2: "",
+    city: "",
+    state: "",
+    postcode: "",
     listing_type: "Sale" as ListingType,
     market_value: "",
     listing_price: "",
@@ -38,6 +49,24 @@ export default function NewPropertyPage() {
 
   const updateField = (field: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateAddressField = (
+    field: "address_line_1" | "address_line_2",
+    value: string
+  ) => {
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      const suggestedCity = suggestCityFromAddress(
+        next.address_line_1,
+        next.address_line_2
+      );
+
+      return {
+        ...next,
+        city: current.city || suggestedCity,
+      };
+    });
   };
 
   const validatePriceFields = () => {
@@ -59,8 +88,23 @@ export default function NewPropertyPage() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (step < steps.length - 1) {
-      if (step === 0 && (!form.name || !form.type || !form.location)) {
-        setError("Name, type, location, and listing type are required.");
+      if (
+        step === 0 &&
+        (!form.name ||
+          !form.type ||
+          !form.owner_name ||
+          !form.owner_email ||
+          !form.owner_phone ||
+          !form.address_line_1 ||
+          !form.city ||
+          !form.state ||
+          !form.postcode)
+      ) {
+        setError("Property, owner, and address details are required.");
+        return;
+      }
+      if (step === 0 && !/^\d{5}$/.test(form.postcode)) {
+        setError("Postcode must be 5 digits.");
         return;
       }
       if (step === 1) {
@@ -82,10 +126,6 @@ export default function NewPropertyPage() {
         setError("Maintenance fee must be non-negative.");
         return;
       }
-      if (step === 2 && !form.cover_storage_path) {
-        setError("Cover image storage path is required.");
-        return;
-      }
       setError(null);
       setStep((current) => current + 1);
       return;
@@ -97,7 +137,14 @@ export default function NewPropertyPage() {
       body: JSON.stringify({
         name: form.name,
         type: form.type,
-        location: form.location,
+        owner_name: form.owner_name,
+        owner_email: form.owner_email,
+        owner_phone: form.owner_phone,
+        address_line_1: form.address_line_1,
+        address_line_2: form.address_line_2 || null,
+        city: form.city,
+        state: form.state,
+        postcode: form.postcode,
         listing_type: form.listing_type,
         market_value: form.market_value ? Number(form.market_value) : null,
         listing_price: form.listing_price ? Number(form.listing_price) : null,
@@ -114,16 +161,18 @@ export default function NewPropertyPage() {
         furnishing: form.furnishing || null,
       }),
     });
-    await apiFetch(`/properties/${property.id}/images/complete`, token, {
-      method: "POST",
-      body: JSON.stringify({
-        storage_path: form.cover_storage_path.includes("/")
-          ? form.cover_storage_path
-          : `local/${property.id}/${form.cover_storage_path}`,
-        is_cover: true,
-        sort_order: 0,
-      }),
-    });
+    if (form.cover_storage_path) {
+      await apiFetch(`/properties/${property.id}/images/complete`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          storage_path: form.cover_storage_path.includes("/")
+            ? form.cover_storage_path
+            : `local/${property.id}/${form.cover_storage_path}`,
+          is_cover: true,
+          sort_order: 0,
+        }),
+      });
+    }
     router.push(`/app/properties/${property.id}`);
   };
 
@@ -153,13 +202,76 @@ export default function NewPropertyPage() {
             required
           />
           <input
-            value={form.location}
-            onChange={(event) => updateField("location", event.target.value)}
-            placeholder="Location"
+            value={form.owner_name}
+            onChange={(event) => updateField("owner_name", event.target.value)}
+            placeholder="Owner name"
+            className="w-full rounded-md border px-3 py-2"
+            required
+          />
+          <input
+            value={form.owner_email}
+            onChange={(event) => updateField("owner_email", event.target.value)}
+            type="email"
+            placeholder="Owner email"
+            className="w-full rounded-md border px-3 py-2"
+            required
+          />
+          <input
+            value={form.owner_phone}
+            onChange={(event) => updateField("owner_phone", event.target.value)}
+            placeholder="Owner phone"
+            className="w-full rounded-md border px-3 py-2"
+            required
+          />
+          <input
+            value={form.address_line_1}
+            onChange={(event) =>
+              updateAddressField("address_line_1", event.target.value)
+            }
+            placeholder="Address line 1"
+            className="w-full rounded-md border px-3 py-2"
+            required
+          />
+          <input
+            value={form.address_line_2}
+            onChange={(event) =>
+              updateAddressField("address_line_2", event.target.value)
+            }
+            placeholder="Address line 2"
+            className="w-full rounded-md border px-3 py-2"
+          />
+          <input
+            value={form.city}
+            onChange={(event) => updateField("city", event.target.value)}
+            placeholder="City / Area"
             className="w-full rounded-md border px-3 py-2"
             required
           />
           <select
+            aria-label="State"
+            value={form.state}
+            onChange={(event) => updateField("state", event.target.value)}
+            className="w-full rounded-md border px-3 py-2"
+            required
+          >
+            <option value="">Select state</option>
+            {MALAYSIAN_STATES.map((state) => (
+              <option key={state} value={state}>
+                {state}
+              </option>
+            ))}
+          </select>
+          <input
+            value={form.postcode}
+            onChange={(event) => updateField("postcode", event.target.value)}
+            inputMode="numeric"
+            pattern="\d{5}"
+            placeholder="Postcode"
+            className="w-full rounded-md border px-3 py-2"
+            required
+          />
+          <select
+            aria-label="Listing type"
             value={form.listing_type}
             onChange={(event) =>
               updateField("listing_type", event.target.value as ListingType)
@@ -263,15 +375,20 @@ export default function NewPropertyPage() {
       ) : null}
 
       {step === 2 ? (
-        <input
-          value={form.cover_storage_path}
-          onChange={(event) =>
-            updateField("cover_storage_path", event.target.value)
-          }
-          placeholder="Cover image storage path"
-          className="w-full rounded-md border px-3 py-2"
-          required
-        />
+        <div className="space-y-2">
+          <input
+            value={form.cover_storage_path}
+            onChange={(event) =>
+              updateField("cover_storage_path", event.target.value)
+            }
+            placeholder="Optional cover image storage path"
+            className="w-full rounded-md border px-3 py-2"
+          />
+          <p className="text-sm text-muted-foreground">
+            Images are optional on web. Add a storage path only if an image is
+            already uploaded.
+          </p>
+        </div>
       ) : null}
 
       {step === 3 ? (

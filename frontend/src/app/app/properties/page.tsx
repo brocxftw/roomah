@@ -4,13 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
+import { propertyAddressSummary } from "@/lib/malaysia-areas";
 import { useAuth } from "@/lib/use-auth";
 
 type Property = {
   id: string;
   name: string;
   type: string;
-  location: string;
+  city: string;
+  state: string;
+  postcode: string;
   price: number;
   listing_type: "Sale" | "Rental" | "Both";
   listing_price?: number | null;
@@ -24,6 +27,8 @@ export default function PropertiesPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [listingType, setListingType] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,6 +38,8 @@ export default function PropertiesPage() {
       if (query) params.set("q", query);
       if (status) params.set("status_filter", status);
       if (listingType) params.set("listing_type", listingType);
+      if (city) params.set("city", city);
+      if (state) params.set("state", state);
 
       try {
         const data = await apiFetch<Property[]>(
@@ -49,7 +56,7 @@ export default function PropertiesPage() {
     }
 
     void loadProperties();
-  }, [getToken, query, status, listingType]);
+  }, [getToken, query, status, listingType, city, state]);
 
   return (
     <div className="space-y-6">
@@ -72,7 +79,7 @@ export default function PropertiesPage() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search name or location"
+          placeholder="Search name, owner, city, state, or postcode"
           className="w-full rounded-md border px-3 py-2"
         />
         <select
@@ -97,6 +104,18 @@ export default function PropertiesPage() {
           <option value="Sale,Both">Sale-capable</option>
           <option value="Rental,Both">Rental-capable</option>
         </select>
+        <input
+          value={city}
+          onChange={(event) => setCity(event.target.value)}
+          placeholder="City"
+          className="rounded-md border px-3 py-2"
+        />
+        <input
+          value={state}
+          onChange={(event) => setState(event.target.value)}
+          placeholder="State"
+          className="rounded-md border px-3 py-2"
+        />
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -110,7 +129,7 @@ export default function PropertiesPage() {
           >
             <span className="font-medium">{property.name}</span>
             <span>{property.type}</span>
-            <span>{property.location}</span>
+            <span>{propertyAddressSummary(property)}</span>
             <span>
               {property.listing_type === "Rental"
                 ? `Rent RM ${property.expected_rental ?? property.price}`

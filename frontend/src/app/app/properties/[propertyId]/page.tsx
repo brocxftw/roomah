@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
+import { propertyAddressSummary } from "@/lib/malaysia-areas";
 import { useAuth } from "@/lib/use-auth";
 
 type PropertyImage = {
@@ -19,7 +20,14 @@ type PropertyDetail = {
   id: string;
   name: string;
   type: string;
-  location: string;
+  owner_name: string;
+  owner_email: string;
+  owner_phone: string;
+  address_line_1: string;
+  address_line_2?: string | null;
+  city: string;
+  state: string;
+  postcode: string;
   price: number;
   listing_type: "Sale" | "Rental" | "Both";
   market_value?: number | null;
@@ -37,6 +45,14 @@ type PropertyDetail = {
 };
 
 type PropertyEditForm = {
+  owner_name: string;
+  owner_email: string;
+  owner_phone: string;
+  address_line_1: string;
+  address_line_2: string;
+  city: string;
+  state: string;
+  postcode: string;
   listing_type: "Sale" | "Rental" | "Both";
   market_value: string;
   listing_price: string;
@@ -61,6 +77,14 @@ export default function PropertyDetailPage() {
     );
     setProperty(data);
     setEditForm({
+      owner_name: data.owner_name,
+      owner_email: data.owner_email,
+      owner_phone: data.owner_phone,
+      address_line_1: data.address_line_1,
+      address_line_2: data.address_line_2 ?? "",
+      city: data.city,
+      state: data.state,
+      postcode: data.postcode,
       listing_type: data.listing_type,
       market_value: data.market_value?.toString() ?? "",
       listing_price: data.listing_price?.toString() ?? "",
@@ -100,6 +124,14 @@ export default function PropertyDetailPage() {
     await apiFetch(`/properties/${propertyId}`, token, {
       method: "PATCH",
       body: JSON.stringify({
+        owner_name: editForm.owner_name,
+        owner_email: editForm.owner_email,
+        owner_phone: editForm.owner_phone,
+        address_line_1: editForm.address_line_1,
+        address_line_2: editForm.address_line_2 || null,
+        city: editForm.city,
+        state: editForm.state,
+        postcode: editForm.postcode,
         listing_type: editForm.listing_type,
         market_value: editForm.market_value ? Number(editForm.market_value) : null,
         listing_price: editForm.listing_price
@@ -157,7 +189,8 @@ export default function PropertyDetailPage() {
             {property.name}
           </h2>
           <p className="text-muted-foreground">
-            {property.type} · {property.location} · {property.listing_type}
+            {property.type} · {propertyAddressSummary(property)} ·{" "}
+            {property.listing_type}
           </p>
         </div>
         <select
@@ -174,6 +207,38 @@ export default function PropertyDetailPage() {
       <section className="rounded-lg border p-4">
         <h3 className="font-medium">Details</h3>
         <dl className="mt-3 grid gap-3 text-sm md:grid-cols-4">
+          <div>
+            <dt className="text-muted-foreground">Owner</dt>
+            <dd>{property.owner_name}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Owner email</dt>
+            <dd>{property.owner_email}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Owner phone</dt>
+            <dd>{property.owner_phone}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Address</dt>
+            <dd>
+              {[property.address_line_1, property.address_line_2]
+                .filter(Boolean)
+                .join(", ")}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">City / Area</dt>
+            <dd>{property.city}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">State</dt>
+            <dd>{property.state}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Postcode</dt>
+            <dd>{property.postcode}</dd>
+          </div>
           <div>
             <dt className="text-muted-foreground">Listing type</dt>
             <dd>{property.listing_type}</dd>
@@ -239,6 +304,76 @@ export default function PropertyDetailPage() {
         <form onSubmit={updateDomainFields} className="rounded-lg border p-4">
           <h3 className="font-medium">Edit Listing Details</h3>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <input
+              value={editForm.owner_name}
+              onChange={(event) =>
+                updateEditField("owner_name", event.target.value)
+              }
+              placeholder="Owner name"
+              className="rounded-md border px-3 py-2"
+              required
+            />
+            <input
+              value={editForm.owner_email}
+              onChange={(event) =>
+                updateEditField("owner_email", event.target.value)
+              }
+              type="email"
+              placeholder="Owner email"
+              className="rounded-md border px-3 py-2"
+              required
+            />
+            <input
+              value={editForm.owner_phone}
+              onChange={(event) =>
+                updateEditField("owner_phone", event.target.value)
+              }
+              placeholder="Owner phone"
+              className="rounded-md border px-3 py-2"
+              required
+            />
+            <input
+              value={editForm.address_line_1}
+              onChange={(event) =>
+                updateEditField("address_line_1", event.target.value)
+              }
+              placeholder="Address line 1"
+              className="rounded-md border px-3 py-2"
+              required
+            />
+            <input
+              value={editForm.address_line_2}
+              onChange={(event) =>
+                updateEditField("address_line_2", event.target.value)
+              }
+              placeholder="Address line 2"
+              className="rounded-md border px-3 py-2"
+            />
+            <input
+              value={editForm.city}
+              onChange={(event) => updateEditField("city", event.target.value)}
+              placeholder="City / Area"
+              className="rounded-md border px-3 py-2"
+              required
+            />
+            <input
+              value={editForm.state}
+              onChange={(event) => updateEditField("state", event.target.value)}
+              placeholder="State"
+              className="rounded-md border px-3 py-2"
+              required
+            />
+            <input
+              value={editForm.postcode}
+              onChange={(event) =>
+                updateEditField("postcode", event.target.value)
+              }
+              inputMode="numeric"
+              pattern="\d{5}"
+              placeholder="Postcode"
+              className="rounded-md border px-3 py-2"
+              required
+            />
             <select
               value={editForm.listing_type}
               onChange={(event) =>

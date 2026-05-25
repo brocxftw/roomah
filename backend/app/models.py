@@ -115,7 +115,14 @@ class Property(RoomahModel):
     ren_id: UUID
     name: str
     type: str
-    location: str
+    owner_name: str
+    owner_email: EmailStr
+    owner_phone: str
+    address_line_1: str
+    address_line_2: str | None = None
+    city: str
+    state: str
+    postcode: str
     price: Decimal = Field(ge=0)
     listing_type: ListingType
     market_value: Decimal | None = Field(default=None, ge=0)

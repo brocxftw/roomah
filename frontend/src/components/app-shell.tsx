@@ -174,11 +174,11 @@ function AppNavLinks({
               href={item.href}
               onClick={onNavigate}
               className={[
-                "group flex min-h-11 items-center gap-3 px-3 text-sm font-medium transition",
+                "group flex min-h-12 items-center gap-3 rounded-md px-3 text-[17px] font-medium transition",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 active
-                  ? "border-l-4 border-l-teal-500 bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
-                  : "border-l-4 border-l-transparent text-slate-300 hover:bg-slate-800 hover:text-white",
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white",
                 compact ? "justify-center px-2" : "",
               ].join(" ")}
               title={compact ? item.label : undefined}
@@ -189,8 +189,8 @@ function AppNavLinks({
                 alt=""
                 aria-hidden
                 className={[
-                  "h-5 w-5 shrink-0",
-                  active ? "opacity-90" : "brightness-0 invert opacity-80",
+                  "h-[25px] w-[25px] shrink-0 brightness-0 invert",
+                  active ? "opacity-100" : "opacity-80",
                 ].join(" ")}
                 loading="lazy"
               />
@@ -207,7 +207,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { getToken, signOut } = useAuth();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -218,7 +217,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return window.localStorage.getItem("roomah-theme") === "dark";
   });
   const canSeeManager = currentUser?.role === "MANAGER";
-  const sidebarCompact = sidebarCollapsed && !sidebarHovered;
+  const sidebarExpanded = sidebarHovered;
+  const sidebarCompact = !sidebarExpanded;
   const shellMeta = getPageMeta(pathname);
   const userInitials = currentUser?.full_name
     ? currentUser.full_name
@@ -286,26 +286,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onMouseLeave={() => setSidebarHovered(false)}
         className={[
           "fixed inset-y-0 left-0 z-30 hidden h-screen shrink-0 border-r border-slate-200 bg-slate-900 text-slate-100 shadow-sm transition-[width] duration-200 md:flex md:flex-col",
-          sidebarCompact ? "w-20" : "w-[280px]",
+          sidebarExpanded ? "w-[280px]" : "w-20",
         ].join(" ")}
       >
-        <div className="flex h-20 items-center justify-between border-b border-slate-700 px-3">
-          <Link href="/app" className="flex min-w-0 items-center gap-3">
-            <Image src={roomahLogo} alt="ROOMAH" className="h-10 w-auto" priority />
+        <div
+          className={[
+            "flex h-20 items-center border-b border-slate-700",
+            sidebarCompact ? "justify-center px-0" : "justify-between px-3",
+          ].join(" ")}
+        >
+          <Link
+            href="/app"
+            className={[
+              "flex min-w-0 items-center",
+              sidebarCompact ? "h-full w-full justify-center" : "gap-3",
+            ].join(" ")}
+          >
+            <Image
+              src={roomahLogo}
+              alt="ROOMAH"
+              priority
+              className={
+                sidebarCompact ? "h-full w-full object-contain" : "h-12 w-auto"
+              }
+            />
             {!sidebarCompact ? (
-              <span className="truncate text-base font-semibold tracking-wide">
-                ROOMAH
+              <span className="flex min-w-0 flex-col leading-tight text-white">
+                <span className="whitespace-nowrap text-[14px] font-bold tracking-tight">
+                  REAL ESTATE NEGOTIATOR
+                </span>
+                <span className="text-[11px] font-medium tracking-wider">
+                  CRM
+                </span>
               </span>
             ) : null}
           </Link>
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed((current) => !current)}
-            className="hidden h-10 min-w-10 items-center justify-center rounded-md text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-100 lg:inline-flex"
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {sidebarCollapsed ? ">" : "<"}
-          </button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 py-4">
           <AppNavLinks
@@ -317,20 +332,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="space-y-1 border-t border-slate-700 p-2">
           <Link
             href="/app/profile"
-            className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100"
+            className={[
+              "flex min-h-12 items-center gap-3 rounded-md px-3 text-[17px] text-slate-300 transition hover:bg-slate-800 hover:text-slate-100",
+              sidebarCompact ? "justify-center px-2" : "",
+            ].join(" ")}
           >
-            <Settings className="size-4 shrink-0" aria-hidden />
+            <Settings className="size-5 shrink-0" aria-hidden />
             {!sidebarCompact ? <span className="truncate">Settings</span> : null}
           </Link>
           <button
             type="button"
-            className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-300 transition hover:bg-slate-800 hover:text-slate-100"
+            className={[
+              "flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-[17px] text-slate-300 transition hover:bg-slate-800 hover:text-slate-100",
+              sidebarCompact ? "justify-center px-2" : "",
+            ].join(" ")}
             onClick={toggleDarkMode}
           >
             {isDarkMode ? (
-              <Sun className="size-4 shrink-0" aria-hidden />
+              <Sun className="size-5 shrink-0" aria-hidden />
             ) : (
-              <Moon className="size-4 shrink-0" aria-hidden />
+              <Moon className="size-5 shrink-0" aria-hidden />
             )}
             {!sidebarCompact ? (
               <span className="truncate">{isDarkMode ? "Light mode" : "Dark mode"}</span>
@@ -342,7 +363,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className={[
           "transition-[padding] duration-200",
-          sidebarCollapsed ? "md:pl-20" : "md:pl-[280px]",
+          sidebarExpanded ? "md:pl-[280px]" : "md:pl-20",
         ].join(" ")}
       >
         <div className="mx-auto flex w-full max-w-[1600px] min-w-0 flex-col gap-6 p-4 md:p-6">

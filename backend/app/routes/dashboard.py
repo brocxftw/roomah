@@ -5,10 +5,33 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.auth import AuthContext, get_auth_context
+from app.models import LeadStatus
 from app.supabase import get_service_supabase
 from app.users import get_current_user_record
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+PIPELINE_STAGES = [
+    LeadStatus.NEW.value,
+    LeadStatus.CONTACTED.value,
+    LeadStatus.QUALIFIED.value,
+    LeadStatus.PROPOSAL.value,
+    LeadStatus.NEGOTIATION.value,
+    LeadStatus.WON.value,
+]
+IN_FLIGHT_LEAD_STATUSES = [
+    LeadStatus.NEW.value,
+    LeadStatus.CONTACTED.value,
+    LeadStatus.QUALIFIED.value,
+    LeadStatus.PROPOSAL.value,
+    LeadStatus.NEGOTIATION.value,
+]
+CONVERSION_DENOMINATOR_STATUSES = [
+    LeadStatus.QUALIFIED.value,
+    LeadStatus.PROPOSAL.value,
+    LeadStatus.NEGOTIATION.value,
+    LeadStatus.WON.value,
+]
 
 
 def _date_range_start(now: datetime, date_range: str) -> datetime:
@@ -35,6 +58,14 @@ def _sum_commission(deals: list[dict[str, Any]]) -> Decimal:
         Decimal(str(deal.get("commission_override") or deal["commission_total"]))
         for deal in deals
     )
+
+
+def _decimal_from_row(row: dict[str, Any], *keys: str) -> Decimal:
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return Decimal(str(value))
+    return Decimal("0")
 
 
 @router.get("")
@@ -78,7 +109,7 @@ def get_dashboard(
 
     follow_ups_due = (
         lead_query()
-        .in_("status", ["Active", "Negotiating"])
+        .in_("status", IN_FLIGHT_LEAD_STATUSES)
         .lte("last_interaction_at", two_days_ago.isoformat())
         .order("last_interaction_at")
         .execute()
@@ -95,7 +126,7 @@ def get_dashboard(
     )
     deals_closing_soon = (
         lead_query()
-        .eq("status", "Negotiating")
+        .eq("status", LeadStatus.NEGOTIATION.value)
         .order("last_interaction_at", desc=True)
         .execute()
         .data
@@ -112,16 +143,95 @@ def get_dashboard(
 
     active_leads = (
         lead_query("id")
-        .in_("status", ["Active", "Negotiating"])
+        .in_("status", IN_FLIGHT_LEAD_STATUSES)
         .execute()
         .data
     )
-    funnel_leads = lead_query("id,status").execute().data
-    funnel_counts = {"Active": 0, "Negotiating": 0, "Closed": 0}
+    funnel_leads = lead_query("id,status").in_("status", PIPELINE_STAGES).execute().data
+    funnel_counts = {stage: 0 for stage in PIPELINE_STAGES}
+    funnel_values = {stage: Decimal("0") for stage in PIPELINE_STAGES}
     for funnel_lead in funnel_leads:
         funnel_status = funnel_lead.get("status")
         if funnel_status in funnel_counts:
             funnel_counts[funnel_status] += 1
+
+    funnel_lead_ids = [lead["id"] for lead in funnel_leads]
+    lead_to_property_id: dict[str, str] = {}
+    if funnel_lead_ids:
+        lead_property_links = (
+            supabase.table("lead_properties")
+            .select("lead_id,property_id,status,created_at")
+            .in_("lead_id", funnel_lead_ids)
+            .eq("status", "active")
+            .execute()
+            .data
+        )
+        for link in sorted(
+            lead_property_links,
+            key=lambda row: str(row.get("created_at") or ""),
+        ):
+            lead_to_property_id[link["lead_id"]] = link["property_id"]
+
+    property_ids = sorted(set(lead_to_property_id.values()))
+    properties_by_id: dict[str, dict[str, Any]] = {}
+    if property_ids:
+        properties = (
+            supabase.table("properties")
+            .select("id,listing_price,price")
+            .eq("team_id", auth.team_id)
+            .in_("id", property_ids)
+            .execute()
+            .data
+        )
+        properties_by_id = {property_row["id"]: property_row for property_row in properties}
+
+    won_lead_ids = [
+        lead["id"]
+        for lead in funnel_leads
+        if lead.get("status") == LeadStatus.WON.value
+    ]
+    deal_values_by_lead: dict[str, Decimal] = {}
+    if won_lead_ids:
+        won_deals = (
+            deal_query("lead_id,sale_price,commission_total,commission_override")
+            .in_("lead_id", won_lead_ids)
+            .execute()
+            .data
+        )
+        for deal in won_deals:
+            deal_values_by_lead[deal["lead_id"]] = _decimal_from_row(
+                deal,
+                "sale_price",
+                "commission_override",
+                "commission_total",
+            )
+
+    for lead in funnel_leads:
+        status_value = lead.get("status")
+        if status_value not in funnel_values:
+            continue
+        if status_value == LeadStatus.WON.value:
+            funnel_values[status_value] += deal_values_by_lead.get(
+                lead["id"],
+                Decimal("0"),
+            )
+            continue
+        property_row = properties_by_id.get(lead_to_property_id.get(lead["id"], ""))
+        if property_row:
+            funnel_values[status_value] += _decimal_from_row(
+                property_row,
+                "listing_price",
+                "price",
+            )
+
+    conversion_denominator = sum(
+        funnel_counts[stage] for stage in CONVERSION_DENOMINATOR_STATUSES
+    )
+    pipeline_conversion_rate = (
+        None
+        if conversion_denominator < 5
+        else funnel_counts[LeadStatus.WON.value] / conversion_denominator
+    )
     properties_listed = property_query().eq("status", "Active").execute().data
     monthly_deals = (
         deal_query()
@@ -275,10 +385,15 @@ def get_dashboard(
         },
         "personal_progress": personal_progress,
         "funnel": [
-            {"stage": "Active", "count": funnel_counts["Active"]},
-            {"stage": "Negotiating", "count": funnel_counts["Negotiating"]},
-            {"stage": "Closed", "count": funnel_counts["Closed"]},
+            {
+                "stage": stage,
+                "count": funnel_counts[stage],
+                "value": str(funnel_values[stage]),
+            }
+            for stage in PIPELINE_STAGES
         ],
+        "pipeline_conversion_rate": pipeline_conversion_rate,
+        "pipeline_conversion_denominator": conversion_denominator,
         "recent_activity": recent_activity,
         "tasks": {
             "follow_ups_due": follow_ups_due,

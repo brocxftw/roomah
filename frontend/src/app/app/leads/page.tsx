@@ -96,9 +96,12 @@ export default function LeadsPage() {
           className="rounded-md border px-3 py-2"
         >
           <option value="">All statuses</option>
-          <option value="Active">Active</option>
-          <option value="Negotiating">Negotiating</option>
-          <option value="Closed">Closed</option>
+          <option value="New">New</option>
+          <option value="Contacted">Contacted</option>
+          <option value="Qualified">Qualified</option>
+          <option value="Proposal">Proposal</option>
+          <option value="Negotiation">Negotiation</option>
+          <option value="Won">Won</option>
           <option value="Lost">Lost</option>
         </select>
       </div>

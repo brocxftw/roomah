@@ -49,7 +49,7 @@ export default function DealsPage() {
       const token = await getToken();
       if (isClosingFilterActive) {
         const data = await apiFetch<ClosingLead[]>(
-          "/leads?status_filter=Negotiating",
+          "/leads?status_filter=Negotiation",
           token
         );
         setClosingLeads(data);
@@ -72,7 +72,7 @@ export default function DealsPage() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Deals</h2>
         <p className="text-muted-foreground">
-          Closed transactions and commission totals.
+          Won transactions and commission totals.
         </p>
       </div>
 
@@ -80,7 +80,7 @@ export default function DealsPage() {
 
       {isClosingFilterActive ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          <span>Showing negotiating leads that are nearing closing.</span>
+          <span>Showing negotiation-stage leads that are nearing closing.</span>
           <Link
             href="/app/deals"
             className="font-medium underline underline-offset-4"

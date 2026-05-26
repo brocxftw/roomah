@@ -25,6 +25,7 @@ class FakeQuery:
         self.table_name = table_name
         self.filters: list[tuple[str, str, Any]] = []
         self.order_by: tuple[str, bool] | None = None
+        self.limit_count: int | None = None
         self.single_result = False
         self.insert_payload: dict[str, Any] | None = None
 
@@ -43,12 +44,20 @@ class FakeQuery:
         self.filters.append(("lte", column, value))
         return self
 
+    def lt(self, column: str, value: Any) -> FakeQuery:
+        self.filters.append(("lt", column, value))
+        return self
+
     def gte(self, column: str, value: Any) -> FakeQuery:
         self.filters.append(("gte", column, value))
         return self
 
     def order(self, column: str, desc: bool = False) -> FakeQuery:
         self.order_by = (column, desc)
+        return self
+
+    def limit(self, count: int) -> FakeQuery:
+        self.limit_count = count
         return self
 
     def single(self) -> FakeQuery:
@@ -74,6 +83,9 @@ class FakeQuery:
         if self.order_by:
             column, desc = self.order_by
             rows.sort(key=lambda row: row[column], reverse=desc)
+
+        if self.limit_count is not None:
+            rows = rows[: self.limit_count]
 
         if self.single_result:
             return FakeResponse(rows[:1])
@@ -106,6 +118,8 @@ class FakeQuery:
             return actual in value
         if operator == "lte":
             return str(actual) <= str(value)
+        if operator == "lt":
+            return str(actual) < str(value)
         if operator == "gte":
             return str(actual) >= str(value)
         raise AssertionError(f"Unsupported operator: {operator}")
@@ -121,11 +135,12 @@ class FakeSupabase:
                     "team_id": TEAM_ID,
                     "ren_id": USER_ID,
                     "name": "Due Lead",
-                    "status": "Active",
+                    "status": "Contacted",
                     "last_interaction_at": old_interaction,
                 }
             ],
             "properties": [],
+            "lead_properties": [],
             "viewings": [],
             "deals": [],
             "timeline_events": [],
@@ -144,7 +159,13 @@ def test_manual_timeline_event_clears_followup_due(monkeypatch) -> None:
         role="REN",
         claims={},
     )
-    user = {"id": USER_ID, "role": "REN", "team_id": TEAM_ID}
+    user = {
+        "id": USER_ID,
+        "role": "REN",
+        "team_id": TEAM_ID,
+        "full_name": "Follow Up REN",
+        "monthly_target_amount": None,
+    }
 
     monkeypatch.setattr(dashboard_routes, "get_service_supabase", lambda: supabase)
     monkeypatch.setattr(dashboard_routes, "get_current_user_record", lambda _auth: user)

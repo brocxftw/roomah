@@ -41,7 +41,9 @@ type Dashboard = {
   }[];
   target_progress: TargetProgressData;
   personal_progress: TargetProgressData | null;
-  funnel: { stage: string; count: number }[];
+  funnel: { stage: string; count: number; value: string }[];
+  pipeline_conversion_rate: number | null;
+  pipeline_conversion_denominator: number;
   recent_activity: {
     id: string;
     event_type: string;
@@ -122,7 +124,10 @@ export default function DashboardPage() {
 
       <TodayAgenda items={dashboard.today_agenda} />
 
-      <PipelineFunnel stages={dashboard.funnel} />
+      <PipelineFunnel
+        stages={dashboard.funnel}
+        conversionRate={dashboard.pipeline_conversion_rate}
+      />
 
       {isManager && personal ? (
         <section className="grid gap-6 lg:grid-cols-3">

@@ -13,9 +13,12 @@ class UserRole(StrEnum):
 
 
 class LeadStatus(StrEnum):
-    ACTIVE = "Active"
-    NEGOTIATING = "Negotiating"
-    CLOSED = "Closed"
+    NEW = "New"
+    CONTACTED = "Contacted"
+    QUALIFIED = "Qualified"
+    PROPOSAL = "Proposal"
+    NEGOTIATION = "Negotiation"
+    WON = "Won"
     LOST = "Lost"
 
 

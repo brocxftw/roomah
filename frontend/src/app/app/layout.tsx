@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { AppShell } from "@/components/app-shell";
 
 export default function ProtectedAppLayout({
@@ -5,5 +7,9 @@ export default function ProtectedAppLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading...</div>}>
+      <AppShell>{children}</AppShell>
+    </Suspense>
+  );
 }

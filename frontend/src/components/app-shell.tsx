@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type React from "react";
 import { useEffect, useState } from "react";
 import {
@@ -89,12 +89,13 @@ const pageMeta: Record<
     description: string;
     primaryAction?: { label: string; href: string };
     secondaryAction?: { label: string; href: string };
+    variant?: "default" | "greeting";
   }
 > = {
   "/app": {
     title: "Dashboard",
     description: "Track your daily activity and priorities.",
-    primaryAction: { label: "+ Add Lead", href: "/app/leads/new" },
+    variant: "greeting",
   },
   "/app/leads": {
     title: "Leads",
@@ -205,6 +206,7 @@ function AppNavLinks({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getToken, signOut } = useAuth();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [sidebarHovered, setSidebarHovered] = useState(false);
@@ -220,6 +222,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const sidebarExpanded = sidebarHovered;
   const sidebarCompact = !sidebarExpanded;
   const shellMeta = getPageMeta(pathname);
+  const dashboardRange = searchParams.get("date_range") ?? "month";
   const userInitials = currentUser?.full_name
     ? currentUser.full_name
         .split(" ")
@@ -278,6 +281,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   function toggleDarkMode() {
     setIsDarkMode((current) => !current);
   }
+
+  function updateDashboardRange(value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("date_range", value);
+    router.replace(`/app?${params.toString()}`);
+  }
+
+  const todayLabel = new Intl.DateTimeFormat("en-MY", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date());
+  const greetingHour = new Date().getHours();
+  const greeting =
+    greetingHour < 12
+      ? "Good Morning"
+      : greetingHour < 18
+        ? "Good Afternoon"
+        : "Good Evening";
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -482,10 +504,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </header>
 
           <PageHeader
-            title={shellMeta.title}
-            description={shellMeta.description}
+            title={
+              shellMeta.variant === "greeting"
+                ? `${greeting}, ${currentUser?.full_name ?? "there"}`
+                : shellMeta.title
+            }
+            description={
+              shellMeta.variant === "greeting" ? todayLabel : shellMeta.description
+            }
             primaryAction={shellMeta.primaryAction}
             secondaryAction={shellMeta.secondaryAction}
+            variant={shellMeta.variant}
+            rightSlot={
+              shellMeta.variant === "greeting" ? (
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    Insights range
+                  </span>
+                  <select
+                    value={dashboardRange}
+                    onChange={(event) => updateDashboardRange(event.target.value)}
+                    className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="quarter">This Quarter</option>
+                  </select>
+                </label>
+              ) : undefined
+            }
           />
 
           <main className="w-full min-w-0 overflow-x-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">

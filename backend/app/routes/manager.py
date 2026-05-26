@@ -4,12 +4,17 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
 from app.auth import AuthContext, get_auth_context
 from app.supabase import get_service_supabase
 from app.users import get_current_user_record, require_manager
 
 router = APIRouter(prefix="/manager", tags=["manager"])
+
+
+class TeamTargetUpdate(BaseModel):
+    monthly_target_amount: Decimal | None = Field(default=None, ge=0)
 
 
 @router.get("/dashboard")
@@ -103,6 +108,23 @@ def get_manager_dashboard(
         }
         for ren in users
     ]
+
+
+@router.patch("/team-target")
+def update_team_target(
+    payload: TeamTargetUpdate,
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    supabase = get_service_supabase()
+    user = get_current_user_record(auth)
+    require_manager(user)
+    response = (
+        supabase.table("teams")
+        .update(payload.model_dump(mode="json"))
+        .eq("id", auth.team_id)
+        .execute()
+    )
+    return response.data[0]
 
 
 @router.get("/campaigns")

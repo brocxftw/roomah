@@ -1,54 +1,91 @@
 "use client";
 
-import Link from "next/link";
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import {
+  KpiStrip,
+  PipelineFunnel,
+  PriorityCards,
+  QuickActions,
+  RecentActivity,
+  SectionTitle,
+  TargetProgress,
+  TodayAgenda,
+} from "@/components/dashboard/dashboard-widgets";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
 
+type TargetProgressData = {
+  scope: "personal" | "team";
+  target_amount: string | null;
+  current_amount: string;
+  progress_ratio: number | null;
+  date_range: string;
+};
+
 type Dashboard = {
-  tasks: {
-    follow_ups_due: { id: string; name: string; last_interaction_at: string }[];
-    upcoming_viewings: { id: string; scheduled_at: string; lead_id: string }[];
-    deals_closing_soon: {
-      id: string;
-      name: string;
-      last_interaction_at: string;
-    }[];
+  priority_counts: {
+    overdue_follow_ups: number;
+    viewings_today: number;
+    deals_due: number;
   };
+  today_agenda: {
+    id: string;
+    lead_id: string;
+    property_id: string;
+    scheduled_at: string;
+    status: string;
+  }[];
+  target_progress: TargetProgressData;
+  personal_progress: TargetProgressData | null;
+  funnel: { stage: string; count: number }[];
+  recent_activity: {
+    id: string;
+    event_type: string;
+    created_at: string;
+    payload?: Record<string, unknown> | null;
+  }[];
   kpis: {
     active_leads: number;
-    properties_listed: number;
     deals_closed: number;
     monthly_commission: string;
     follow_ups_due: number;
-    campaign_conversion_rate_month: number | null;
-    top_performing_campaign_month?: {
-      id: string;
-      name: string;
-      channel: string;
-      leads_generated: number;
-      conversions: number;
-    } | null;
   };
 };
 
 export default function DashboardPage() {
   const { getToken } = useAuth();
+  const searchParams = useSearchParams();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const dateRange = searchParams.get("date_range") ?? "month";
+
+  async function loadDashboard() {
+    const token = await getToken();
+    const params = new URLSearchParams({ date_range: dateRange });
+    const data = await apiFetch<Dashboard>(`/dashboard?${params.toString()}`, token);
+    setDashboard(data);
+  }
 
   useEffect(() => {
-    async function loadDashboard() {
-      const token = await getToken();
-      const data = await apiFetch<Dashboard>("/dashboard", token);
-      setDashboard(data);
-    }
-
     void loadDashboard().catch((err) => {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     });
-  }, [getToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getToken, dateRange]);
+
+  async function saveTarget(scope: "personal" | "team", amount: string) {
+    const token = await getToken();
+    const endpoint = scope === "team" ? "/manager/team-target" : "/users/me";
+    await apiFetch(endpoint, token, {
+      method: "PATCH",
+      body: JSON.stringify({ monthly_target_amount: Number(amount) }),
+    });
+    await loadDashboard();
+  }
 
   if (!dashboard) {
     return (
@@ -58,154 +95,78 @@ export default function DashboardPage() {
     );
   }
 
-  return (
-    <div className="space-y-8">
-      <section>
-        <h2 className="text-2xl font-semibold tracking-tight">
-          Today&apos;s Tasks
-        </h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <TaskCard
-            title="Follow-ups Due"
-            items={dashboard.tasks.follow_ups_due.map((lead) => ({
-              id: lead.id,
-              label: lead.name,
-              href: `/app/leads/${lead.id}`,
-            }))}
-          />
-          <TaskCard
-            title="Upcoming Viewings"
-            items={dashboard.tasks.upcoming_viewings.map((viewing) => ({
-              id: viewing.id,
-              label: new Date(viewing.scheduled_at).toLocaleString(),
-              href: "/app/viewings",
-            }))}
-          />
-          <TaskCard
-            title="Deals Closing Soon"
-            items={dashboard.tasks.deals_closing_soon.map((lead) => ({
-              id: lead.id,
-              label: lead.name,
-              href: `/app/leads/${lead.id}`,
-            }))}
-          />
-        </div>
-      </section>
-
-      <section>
-        <h3 className="text-lg font-semibold">Quick Actions</h3>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <QuickAction href="/app/leads/new" label="Add Lead" />
-          <QuickAction href="/app/properties/new" label="Add Property" />
-          <QuickAction href="/app/viewings/new" label="Schedule Viewing" />
-        </div>
-      </section>
-
-      <section>
-        <h3 className="text-lg font-semibold">KPI Summary</h3>
-        <div className="mt-4 grid gap-4 md:grid-cols-7">
-          <Kpi label="Active Leads" value={dashboard.kpis.active_leads} />
-          <Kpi
-            label="Properties Listed"
-            value={dashboard.kpis.properties_listed}
-          />
-          <Kpi label="Deals Closed" value={dashboard.kpis.deals_closed} />
-          <Kpi
-            label="Monthly Commission"
-            value={`RM ${dashboard.kpis.monthly_commission}`}
-          />
-          <Kpi label="Follow-ups Due" value={dashboard.kpis.follow_ups_due} />
-          <CampaignConversionRateCard
-            value={dashboard.kpis.campaign_conversion_rate_month}
-          />
-          <TopPerformingCampaignCard
-            campaign={dashboard.kpis.top_performing_campaign_month}
-          />
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function TaskCard({
-  title,
-  items,
-}: {
-  title: string;
-  items: { id: string; label: string; href: string }[];
-}) {
-  return (
-    <div className="rounded-lg border p-4">
-      <h3 className="font-medium">{title}</h3>
-      <div className="mt-3 space-y-2">
-        {items.map((item) => (
-          <Link
-            key={item.id}
-            href={item.href}
-            className="block rounded-md bg-muted px-3 py-2 text-sm"
-          >
-            {item.label}
-          </Link>
-        ))}
-        {!items.length ? (
-          <p className="text-sm text-muted-foreground">Nothing due.</p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function QuickAction({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-    >
-      {label}
-    </Link>
-  );
-}
-
-function Kpi({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
-    </div>
-  );
-}
-
-function CampaignConversionRateCard({ value }: { value: number | null }) {
-  return (
-    <Kpi
-      label="Campaign Conversion Rate"
-      value={value == null ? "-" : `${(value * 100).toFixed(0)}%`}
-    />
-  );
-}
-
-function TopPerformingCampaignCard({
-  campaign,
-}: {
-  campaign?: {
-    name: string;
-    channel: string;
-    leads_generated: number;
-    conversions: number;
-  } | null;
-}) {
-  if (!campaign) {
-    return <Kpi label="Top Campaign" value="No conversions yet" />;
-  }
+  const isManager = dashboard.target_progress.scope === "team";
+  const personal = dashboard.personal_progress;
 
   return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">Top Campaign</p>
-      <p className="mt-2 text-lg font-semibold">{campaign.name}</p>
-      <p className="text-sm text-muted-foreground">
-        {campaign.channel} · {campaign.leads_generated} leads ·{" "}
-        {campaign.conversions} conversions
-      </p>
+    <div className="space-y-6">
+      <KpiStrip
+        followUpsOverdue={dashboard.kpis.follow_ups_due}
+        viewingsToday={dashboard.priority_counts.viewings_today}
+        dealsClosed={dashboard.kpis.deals_closed}
+        activeLeads={dashboard.kpis.active_leads}
+        monthlyCommission={dashboard.kpis.monthly_commission}
+      />
+
+      <SectionTitle
+        title="See how your business is doing"
+        description="Start with the work most likely to need action now."
+      />
+      <PriorityCards counts={dashboard.priority_counts} />
+
+      <SectionTitle
+        title="Quick Actions"
+        description="Create the next record without leaving the dashboard."
+      />
+      <QuickActions />
+
+      <TodayAgenda items={dashboard.today_agenda} />
+
+      <PipelineFunnel stages={dashboard.funnel} />
+
+      {isManager && personal ? (
+        <section className="grid gap-6 lg:grid-cols-3">
+          <TargetProgress
+            scope="team"
+            title="Team Monthly Target"
+            targetAmount={dashboard.target_progress.target_amount}
+            currentAmount={dashboard.target_progress.current_amount}
+            progressRatio={dashboard.target_progress.progress_ratio}
+            dateRange={dashboard.target_progress.date_range}
+            onSaveTarget={(amount) => saveTarget("team", amount)}
+          />
+          <TargetProgress
+            scope="personal"
+            title="Your Monthly Target"
+            targetAmount={personal.target_amount}
+            currentAmount={personal.current_amount}
+            progressRatio={personal.progress_ratio}
+            dateRange={personal.date_range}
+            onSaveTarget={(amount) => saveTarget("personal", amount)}
+          />
+          <RecentActivity
+            items={dashboard.recent_activity}
+            dateRange={dashboard.target_progress.date_range}
+          />
+        </section>
+      ) : (
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]">
+          <TargetProgress
+            scope={dashboard.target_progress.scope}
+            targetAmount={dashboard.target_progress.target_amount}
+            currentAmount={dashboard.target_progress.current_amount}
+            progressRatio={dashboard.target_progress.progress_ratio}
+            dateRange={dashboard.target_progress.date_range}
+            onSaveTarget={(amount) =>
+              saveTarget(dashboard.target_progress.scope, amount)
+            }
+          />
+          <RecentActivity
+            items={dashboard.recent_activity}
+            dateRange={dashboard.target_progress.date_range}
+          />
+        </section>
+      )}
     </div>
   );
 }

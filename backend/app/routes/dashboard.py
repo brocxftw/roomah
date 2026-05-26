@@ -11,37 +11,82 @@ from app.users import get_current_user_record
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+def _date_range_start(now: datetime, date_range: str) -> datetime:
+    if date_range == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if date_range == "week":
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return start_of_day - timedelta(days=start_of_day.weekday())
+    if date_range == "quarter":
+        quarter_month = ((now.month - 1) // 3) * 3 + 1
+        return now.replace(
+            month=quarter_month,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _sum_commission(deals: list[dict[str, Any]]) -> Decimal:
+    return sum(
+        Decimal(str(deal.get("commission_override") or deal["commission_total"]))
+        for deal in deals
+    )
+
+
 @router.get("")
 def get_dashboard(
+    date_range: str = "month",
     auth: AuthContext = Depends(get_auth_context),
 ) -> dict[str, Any]:
     supabase = get_service_supabase()
     user = get_current_user_record(auth)
     now = datetime.now(UTC)
     two_days_ago = now - timedelta(days=2)
-    seven_days_from_now = now + timedelta(days=7)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    range_start = _date_range_start(now, date_range)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    seven_days_from_now = now + timedelta(days=7)
 
-    lead_base = supabase.table("leads").select("*").eq("team_id", auth.team_id)
-    property_base = supabase.table("properties").select("*").eq("team_id", auth.team_id)
-    viewing_base = supabase.table("viewings").select("*").eq("team_id", auth.team_id)
-    deal_base = supabase.table("deals").select("*").eq("team_id", auth.team_id)
+    def lead_query(select: str = "*"):
+        query = supabase.table("leads").select(select).eq("team_id", auth.team_id)
+        if user["role"] != "MANAGER":
+            query = query.eq("ren_id", user["id"])
+        return query
 
-    if user["role"] != "MANAGER":
-        lead_base = lead_base.eq("ren_id", user["id"])
-        property_base = property_base.eq("ren_id", user["id"])
-        viewing_base = viewing_base.eq("assigned_ren_id", user["id"])
-        deal_base = deal_base.eq("ren_id", user["id"])
+    def property_query(select: str = "*"):
+        query = supabase.table("properties").select(select).eq("team_id", auth.team_id)
+        if user["role"] != "MANAGER":
+            query = query.eq("ren_id", user["id"])
+        return query
+
+    def viewing_query(select: str = "*"):
+        query = supabase.table("viewings").select(select).eq("team_id", auth.team_id)
+        if user["role"] != "MANAGER":
+            query = query.eq("assigned_ren_id", user["id"])
+        return query
+
+    def deal_query(select: str = "*"):
+        query = supabase.table("deals").select(select).eq("team_id", auth.team_id)
+        if user["role"] != "MANAGER":
+            query = query.eq("ren_id", user["id"])
+        return query
 
     follow_ups_due = (
-        lead_base.in_("status", ["Active", "Negotiating"])
+        lead_query()
+        .in_("status", ["Active", "Negotiating"])
         .lte("last_interaction_at", two_days_ago.isoformat())
         .order("last_interaction_at")
         .execute()
         .data
     )
     upcoming_viewings = (
-        viewing_base.eq("status", "scheduled")
+        viewing_query()
+        .eq("status", "scheduled")
         .gte("scheduled_at", now.isoformat())
         .lte("scheduled_at", seven_days_from_now.isoformat())
         .order("scheduled_at")
@@ -49,46 +94,55 @@ def get_dashboard(
         .data
     )
     deals_closing_soon = (
-        supabase.table("leads")
-        .select("*")
-        .eq("team_id", auth.team_id)
+        lead_query()
         .eq("status", "Negotiating")
         .order("last_interaction_at", desc=True)
         .execute()
         .data
     )
-    if user["role"] != "MANAGER":
-        deals_closing_soon = [
-            lead for lead in deals_closing_soon if lead["ren_id"] == user["id"]
-        ]
+    today_agenda = (
+        viewing_query()
+        .eq("status", "scheduled")
+        .gte("scheduled_at", today_start.isoformat())
+        .lt("scheduled_at", tomorrow_start.isoformat())
+        .order("scheduled_at")
+        .execute()
+        .data
+    )
 
     active_leads = (
-        supabase.table("leads")
-        .select("id")
-        .eq("team_id", auth.team_id)
+        lead_query("id")
         .in_("status", ["Active", "Negotiating"])
         .execute()
         .data
     )
-    properties_listed = property_base.eq("status", "Active").execute().data
+    funnel_leads = lead_query("id,status").execute().data
+    funnel_counts = {"Active": 0, "Negotiating": 0, "Closed": 0}
+    for funnel_lead in funnel_leads:
+        funnel_status = funnel_lead.get("status")
+        if funnel_status in funnel_counts:
+            funnel_counts[funnel_status] += 1
+    properties_listed = property_query().eq("status", "Active").execute().data
     monthly_deals = (
-        deal_base.gte("closed_at", month_start.isoformat())
+        deal_query()
+        .gte("closed_at", month_start.isoformat())
         .order("closed_at", desc=True)
         .execute()
         .data
     )
-    monthly_commission = sum(
-        Decimal(str(deal.get("commission_override") or deal["commission_total"]))
-        for deal in monthly_deals
+    monthly_commission = _sum_commission(monthly_deals)
+    range_deals = (
+        deal_query()
+        .gte("closed_at", range_start.isoformat())
+        .order("closed_at", desc=True)
+        .execute()
+        .data
     )
+    range_commission = _sum_commission(range_deals)
     attributed_leads_query = (
-        supabase.table("leads")
-        .select("id,campaign_id,ren_id,created_at")
-        .eq("team_id", auth.team_id)
+        lead_query("id,campaign_id,ren_id,created_at")
         .gte("created_at", month_start.isoformat())
     )
-    if user["role"] != "MANAGER":
-        attributed_leads_query = attributed_leads_query.eq("ren_id", user["id"])
     attributed_leads = [
         lead
         for lead in attributed_leads_query.execute().data
@@ -139,8 +193,93 @@ def get_dashboard(
                 "leads_generated": len(leads_by_campaign[top_campaign_id]),
                 "conversions": conversions_by_campaign[top_campaign_id],
             }
+    target_scope = "team" if user["role"] == "MANAGER" else "personal"
+    target_amount = user.get("monthly_target_amount")
+    if target_scope == "team":
+        team = (
+            supabase.table("teams")
+            .select("*")
+            .eq("id", auth.team_id)
+            .single()
+            .execute()
+            .data
+        )
+        target_amount = (team or {}).get("monthly_target_amount")
+
+    target_decimal = Decimal(str(target_amount)) if target_amount is not None else None
+    target_progress_ratio = (
+        None
+        if target_decimal in (None, Decimal("0"))
+        else float(range_commission / target_decimal)
+    )
+    personal_progress = None
+    if target_scope == "team":
+        personal_range_deals = (
+            supabase.table("deals")
+            .select("*")
+            .eq("team_id", auth.team_id)
+            .eq("ren_id", user["id"])
+            .gte("closed_at", range_start.isoformat())
+            .execute()
+            .data
+        )
+        personal_amount = _sum_commission(personal_range_deals)
+        personal_target = user.get("monthly_target_amount")
+        personal_decimal = (
+            Decimal(str(personal_target)) if personal_target is not None else None
+        )
+        personal_ratio = (
+            None
+            if personal_decimal in (None, Decimal("0"))
+            else float(personal_amount / personal_decimal)
+        )
+        personal_progress = {
+            "scope": "personal",
+            "target_amount": (
+                str(personal_decimal) if personal_decimal is not None else None
+            ),
+            "current_amount": str(personal_amount),
+            "progress_ratio": personal_ratio,
+            "date_range": date_range,
+        }
+
+    recent_activity = (
+        supabase.table("timeline_events")
+        .select("*")
+        .eq("team_id", auth.team_id)
+        .gte("created_at", range_start.isoformat())
+        .order("created_at", desc=True)
+        .limit(5)
+        .execute()
+        .data
+    )
 
     return {
+        "user": {
+            "full_name": user["full_name"],
+            "role": user["role"],
+        },
+        "date_range": date_range,
+        "priority_counts": {
+            "overdue_follow_ups": len(follow_ups_due),
+            "viewings_today": len(today_agenda),
+            "deals_due": len(deals_closing_soon),
+        },
+        "today_agenda": today_agenda,
+        "target_progress": {
+            "scope": target_scope,
+            "target_amount": str(target_decimal) if target_decimal is not None else None,
+            "current_amount": str(range_commission),
+            "progress_ratio": target_progress_ratio,
+            "date_range": date_range,
+        },
+        "personal_progress": personal_progress,
+        "funnel": [
+            {"stage": "Active", "count": funnel_counts["Active"]},
+            {"stage": "Negotiating", "count": funnel_counts["Negotiating"]},
+            {"stage": "Closed", "count": funnel_counts["Closed"]},
+        ],
+        "recent_activity": recent_activity,
         "tasks": {
             "follow_ups_due": follow_ups_due,
             "upcoming_viewings": upcoming_viewings,

@@ -18,8 +18,10 @@ from app.models import (
     TimelineEventType,
 )
 from app.routes import campaigns as campaign_routes
+from app.routes import dashboard as dashboard_routes
 from app.routes import deals as deal_routes
 from app.routes import leads as lead_routes
+from app.routes import manager as manager_routes
 from app.routes import properties as property_routes
 from app.routes import users as user_routes
 from app.routes import viewings as viewing_routes
@@ -226,6 +228,13 @@ class FakeSupabase:
     def __init__(self) -> None:
         self.counters: dict[str, int] = {}
         self.tables: dict[str, list[dict[str, Any]]] = {
+            "teams": [
+                {
+                    "id": TEAM_ID,
+                    "name": "Default Team",
+                    "monthly_target_amount": None,
+                }
+            ],
             "users": [
                 self.user(REN_ID, "ren@example.com", "REN"),
                 self.user(MANAGER_ID, "manager@example.com", "MANAGER"),
@@ -259,6 +268,7 @@ class FakeSupabase:
             "full_name": email.split("@", maxsplit=1)[0],
             "phone_number": None,
             "active_status": True,
+            "monthly_target_amount": None,
         }
 
     def table(self, table_name: str) -> FakeQuery:
@@ -300,7 +310,9 @@ def property_required_fields(**overrides: Any) -> dict[str, Any]:
 def patch_supabase(monkeypatch: pytest.MonkeyPatch, supabase: FakeSupabase) -> None:
     modules = [
         campaign_routes,
+        dashboard_routes,
         lead_routes,
+        manager_routes,
         property_routes,
         viewing_routes,
         deal_routes,
@@ -920,3 +932,45 @@ def test_manager_can_patch_team_member_identity_and_status(monkeypatch) -> None:
     assert updated["full_name"] == "Alice Tan"
     assert updated["phone_number"] == "+60123456789"
     assert updated["active_status"] is False
+
+
+def test_ren_can_patch_monthly_target_and_dashboard_uses_personal_scope(
+    monkeypatch,
+) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    updated = user_routes.update_me(
+        payload=user_routes.UserSelfUpdate(monthly_target_amount=Decimal("500000")),
+        auth=auth,
+    )
+    dashboard = dashboard_routes.get_dashboard(auth=auth)
+
+    assert updated["monthly_target_amount"] == "500000"
+    assert dashboard["target_progress"]["scope"] == "personal"
+    assert dashboard["target_progress"]["target_amount"] == "500000"
+
+
+def test_manager_can_patch_team_target_and_dashboard_uses_team_scope(
+    monkeypatch,
+) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+
+    updated = manager_routes.update_team_target(
+        payload=manager_routes.TeamTargetUpdate(
+            monthly_target_amount=Decimal("1500000")
+        ),
+        auth=auth,
+    )
+    dashboard = dashboard_routes.get_dashboard(auth=auth)
+
+    assert updated["monthly_target_amount"] == "1500000"
+    assert dashboard["target_progress"]["scope"] == "team"
+    assert dashboard["target_progress"]["target_amount"] == "1500000"
+    assert dashboard["personal_progress"] is not None
+    assert dashboard["personal_progress"]["scope"] == "personal"
+    funnel_stages = {stage["stage"] for stage in dashboard["funnel"]}
+    assert funnel_stages == {"Active", "Negotiating", "Closed"}

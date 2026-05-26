@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type React from "react";
@@ -19,7 +18,6 @@ import {
   UserCircle2,
 } from "lucide-react";
 
-import roomahLogo from "@/app/app/roomah-logo.png";
 import { PageHeader } from "@/components/layout/page-header";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
@@ -324,14 +322,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               sidebarCompact ? "h-full w-full justify-center" : "gap-3",
             ].join(" ")}
           >
-            <Image
-              src={roomahLogo}
-              alt="ROOMAH"
-              priority
-              className={
-                sidebarCompact ? "h-full w-full object-contain" : "h-12 w-auto"
-              }
-            />
+            <span
+              aria-label="ROOMAH"
+              className={[
+                "inline-flex shrink-0 items-center justify-center rounded-lg bg-white font-bold tracking-tight text-slate-900",
+                sidebarCompact ? "h-10 w-10 text-base" : "h-12 w-12 text-lg",
+              ].join(" ")}
+            >
+              R
+            </span>
             {!sidebarCompact ? (
               <span className="flex min-w-0 flex-col leading-tight text-white">
                 <span className="whitespace-nowrap text-[14px] font-bold tracking-tight">
@@ -547,7 +546,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="h-full w-[280px] overflow-y-auto bg-slate-900 p-4 text-slate-100 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <Link href="/app" className="flex items-center gap-2">
-                <Image src={roomahLogo} alt="ROOMAH" className="h-10 w-auto rounded" />
+                <span
+                  aria-label="ROOMAH"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white text-base font-bold tracking-tight text-slate-900"
+                >
+                  R
+                </span>
                 <span className="font-semibold">ROOMAH</span>
               </Link>
               <button

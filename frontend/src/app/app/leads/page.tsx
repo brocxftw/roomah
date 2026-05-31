@@ -2,10 +2,17 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type React from "react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { CampaignPicker } from "@/components/campaign-picker";
 import { RecordPicker, type RecordPickerGroup } from "@/components/record-picker";
@@ -29,6 +36,7 @@ type Lead = {
   phone: string;
   email: string;
   status: string;
+  created_at?: string | null;
   last_interaction_at?: string | null;
   preferred_location?: string | null;
   preferred_state?: string | null;
@@ -118,6 +126,109 @@ const CAMPAIGN_CHANNELS = [
 const DRAWER_TABS = ["details", "timeline", "properties"] as const;
 type DrawerTab = (typeof DRAWER_TABS)[number];
 
+const DATE_RANGE_OPTIONS = [
+  { value: "", label: "All time" },
+  { value: "today", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "quarter", label: "This quarter" },
+] as const;
+
+type DateRangeValue = (typeof DATE_RANGE_OPTIONS)[number]["value"];
+
+const ACTIVE_STATUSES = ["Contacted", "Qualified", "Proposal", "Negotiation"];
+
+type KpiBucket = {
+  id: "total" | "new" | "active" | "closed" | "lost";
+  label: string;
+  predicate: (lead: Lead) => boolean;
+};
+
+const KPI_BUCKETS: KpiBucket[] = [
+  { id: "total", label: "Total leads", predicate: () => true },
+  { id: "new", label: "New", predicate: (lead) => lead.status === "New" },
+  {
+    id: "active",
+    label: "Active",
+    predicate: (lead) => ACTIVE_STATUSES.includes(lead.status),
+  },
+  { id: "closed", label: "Closed", predicate: (lead) => lead.status === "Won" },
+  { id: "lost", label: "Lost", predicate: (lead) => lead.status === "Lost" },
+];
+
+function monthRange(monthsAgo: number) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1);
+  return { start, end };
+}
+
+function inRange(value: string | null | undefined, start: Date, end: Date) {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return time >= start.getTime() && time < end.getTime();
+}
+
+function dateRangeStart(value: DateRangeValue): Date | null {
+  const now = new Date();
+  if (value === "today") {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+  if (value === "week") {
+    const dayOfWeek = now.getDay();
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - dayOfWeek
+    );
+  }
+  if (value === "month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  if (value === "quarter") {
+    const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
+    return new Date(now.getFullYear(), quarterStartMonth, 1);
+  }
+  return null;
+}
+
+type KpiCardData = {
+  id: KpiBucket["id"];
+  label: string;
+  value: number;
+  changePercent: number | null;
+};
+
+function computeLeadKpis(leads: Lead[]): KpiCardData[] {
+  const thisMonth = monthRange(0);
+  const lastMonth = monthRange(1);
+  return KPI_BUCKETS.map((bucket) => {
+    const matching = leads.filter(bucket.predicate);
+    const thisMonthCount = matching.filter((lead) =>
+      inRange(lead.created_at, thisMonth.start, thisMonth.end)
+    ).length;
+    const lastMonthCount = matching.filter((lead) =>
+      inRange(lead.created_at, lastMonth.start, lastMonth.end)
+    ).length;
+    let changePercent: number | null = null;
+    if (lastMonthCount > 0) {
+      changePercent = Math.round(
+        ((thisMonthCount - lastMonthCount) / lastMonthCount) * 100
+      );
+    } else if (thisMonthCount > 0) {
+      changePercent = null;
+    } else {
+      changePercent = 0;
+    }
+    return {
+      id: bucket.id,
+      label: bucket.label,
+      value: matching.length,
+      changePercent,
+    };
+  });
+}
+
 function formatCurrency(value?: number | string | null) {
   if (value === null || value === undefined || value === "") return "-";
   return new Intl.NumberFormat("en-MY", {
@@ -181,7 +292,9 @@ export default function LeadsPage() {
   const [ownerId, setOwnerId] = useState("");
   const [preferredState, setPreferredState] = useState("");
   const [preferredCity, setPreferredCity] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>("");
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("details");
+  const drawerRef = useRef<HTMLElement | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState(false);
   const [propertyId, setPropertyId] = useState("");
@@ -194,9 +307,20 @@ export default function LeadsPage() {
   const selectedLeadId = searchParams.get("lead");
   const isOverdueFilterActive = isSupportedLeadStatusFilter(statusFilter);
   const canFilterOwner = currentUser?.role === "MANAGER";
-  const visibleLeads = isOverdueFilterActive
-    ? leads.filter((lead) => isOverdueLead(lead))
-    : leads;
+  const dateRangeStartDate = useMemo(
+    () => dateRangeStart(dateRange),
+    [dateRange]
+  );
+  const visibleLeads = useMemo(() => {
+    const base = isOverdueFilterActive
+      ? leads.filter((lead) => isOverdueLead(lead))
+      : leads;
+    if (!dateRangeStartDate) return base;
+    return base.filter((lead) => {
+      if (!lead.created_at) return false;
+      return new Date(lead.created_at).getTime() >= dateRangeStartDate.getTime();
+    });
+  }, [leads, isOverdueFilterActive, dateRangeStartDate]);
   const activeLinkedProperties =
     selectedLead?.linked_properties.filter((link) => link.status === "active") ?? [];
   const activeLinkedPropertyIds = new Set(
@@ -226,17 +350,7 @@ export default function LeadsPage() {
       })),
     },
   ];
-  const leadKpis = useMemo(() => {
-    const active = leads.filter((lead) => !["Won", "Lost"].includes(lead.status));
-    const converted = leads.filter((lead) => lead.status === "Won").length;
-    const denominator = leads.filter((lead) => lead.status !== "Lost").length;
-    return {
-      active: active.length,
-      new: leads.filter((lead) => lead.status === "New").length,
-      overdue: leads.filter((lead) => isOverdueLead(lead)).length,
-      conversionRate: denominator ? Math.round((converted / denominator) * 100) : 0,
-    };
-  }, [leads]);
+  const leadKpiCards = useMemo(() => computeLeadKpis(leads), [leads]);
 
   useEffect(() => {
     async function loadLeads() {
@@ -353,8 +467,25 @@ export default function LeadsPage() {
     setOwnerId("");
     setPreferredState("");
     setPreferredCity("");
+    setDateRange("");
     router.replace("/app/leads");
   }
+
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (drawerRef.current?.contains(target)) return;
+      if (target.closest("[data-lead-row=\"true\"]")) return;
+      if (target.closest("[data-lead-modal=\"true\"]")) return;
+      updateSelection(null);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+    // updateSelection is stable enough for this listener; selectedLeadId guards lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLeadId]);
 
   async function refreshSelectedLead() {
     if (selectedLeadId) await loadSelectedLead(selectedLeadId);
@@ -410,18 +541,9 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 lg:grid-cols-4">
-        {[
-          ["Active leads", leadKpis.active, "Open conversations"],
-          ["New leads", leadKpis.new, "Fresh intake"],
-          ["Overdue follow-ups", leadKpis.overdue, "Needs attention"],
-          ["Conversion rate", `${leadKpis.conversionRate}%`, "Won vs active pool"],
-        ].map(([label, value, caption]) => (
-          <div key={label} className="rounded-xl border bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">{label}</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{value}</p>
-            <p className="mt-1 text-xs text-slate-500">{caption}</p>
-          </div>
+      <section className="grid gap-4 lg:grid-cols-5">
+        {leadKpiCards.map((card) => (
+          <KpiCard key={card.id} card={card} />
         ))}
       </section>
 
@@ -457,13 +579,27 @@ export default function LeadsPage() {
               </option>
             ))}
           </select>
+          <select
+            value={dateRange}
+            onChange={(event) =>
+              setDateRange(event.target.value as DateRangeValue)
+            }
+            className="min-h-11 rounded-lg border px-3 py-2 text-sm"
+            aria-label="Date range"
+          >
+            {DATE_RANGE_OPTIONS.map((option) => (
+              <option key={option.value || "all"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           {canFilterOwner ? (
             <select
               value={ownerId}
               onChange={(event) => setOwnerId(event.target.value)}
               className="min-h-11 rounded-lg border px-3 py-2 text-sm"
             >
-              <option value="">All owners</option>
+              <option value="">All agents</option>
               {teamUsers.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.full_name}
@@ -491,12 +627,6 @@ export default function LeadsPage() {
           />
           <button
             type="button"
-            className="min-h-11 rounded-lg border px-3 py-2 text-sm text-slate-600"
-          >
-            Advanced
-          </button>
-          <button
-            type="button"
             onClick={resetFilters}
             className="min-h-11 rounded-lg border px-3 py-2 text-sm font-medium"
           >
@@ -519,27 +649,27 @@ export default function LeadsPage() {
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-          <div className="grid grid-cols-[1.4fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <span>Lead</span>
-            <span>Contact</span>
-            <span>Classification</span>
-            <span>Status</span>
-            <span>Next action</span>
-          </div>
-          {visibleLeads.map((lead) => {
-            const selected = selectedLeadId === lead.id;
-            return (
-              <button
-                key={lead.id}
-                type="button"
-                onClick={() => updateSelection(lead.id)}
-                className={[
-                  "grid w-full grid-cols-[1.4fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 border-b px-4 py-4 text-left text-sm transition last:border-b-0 hover:bg-slate-50",
-                  selected ? "bg-blue-50/60 ring-1 ring-inset ring-blue-200" : "",
-                ].join(" ")}
-              >
+      <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+        <div className="grid grid-cols-[1.4fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <span>Lead</span>
+          <span>Contact</span>
+          <span>Classification</span>
+          <span>Status</span>
+          <span>Next action</span>
+        </div>
+        {visibleLeads.map((lead) => {
+          const selected = selectedLeadId === lead.id;
+          return (
+            <button
+              key={lead.id}
+              type="button"
+              data-lead-row="true"
+              onClick={() => updateSelection(lead.id)}
+              className={[
+                "grid w-full grid-cols-[1.4fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 border-b px-4 py-4 text-left text-sm transition last:border-b-0 hover:bg-slate-50",
+                selected ? "bg-blue-50/60 ring-1 ring-inset ring-blue-200" : "",
+              ].join(" ")}
+            >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
                     {initials(lead.name)}
@@ -590,12 +720,14 @@ export default function LeadsPage() {
               </button>
             );
           })}
-          {!visibleLeads.length ? (
-            <p className="p-6 text-sm text-muted-foreground">No leads found.</p>
-          ) : null}
-        </section>
+        {!visibleLeads.length ? (
+          <p className="p-6 text-sm text-muted-foreground">No leads found.</p>
+        ) : null}
+      </section>
 
+      {selectedLeadId ? (
         <LeadDrawer
+          containerRef={drawerRef}
           lead={selectedLead}
           loading={loadingDetail}
           tab={drawerTab}
@@ -618,7 +750,7 @@ export default function LeadsPage() {
           onLogManualEvent={logManualEvent}
           onCloseDeal={() => setCloseDealOpen(true)}
         />
-      </div>
+      ) : null}
 
       {selectedLead ? (
         <CloseDealModal
@@ -637,7 +769,34 @@ export default function LeadsPage() {
   );
 }
 
+function KpiCard({ card }: { card: KpiCardData }) {
+  const change = card.changePercent;
+  const isPositive = change !== null && change > 0;
+  const isNegative = change !== null && change < 0;
+  const Icon = isPositive ? ArrowUpRight : isNegative ? ArrowDownRight : Minus;
+  const tone = isPositive
+    ? "text-emerald-600"
+    : isNegative
+      ? "text-red-600"
+      : "text-slate-400";
+  const label =
+    change === null
+      ? "No prior data"
+      : `${change > 0 ? "+" : ""}${change}% vs last month`;
+  return (
+    <div className="rounded-xl border bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-500">{card.label}</p>
+      <p className="mt-2 text-3xl font-semibold text-slate-900">{card.value}</p>
+      <div className={`mt-3 flex items-center gap-1 text-xs font-medium ${tone}`}>
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
+
 function LeadDrawer({
+  containerRef,
   lead,
   loading,
   tab,
@@ -660,6 +819,7 @@ function LeadDrawer({
   onLogManualEvent,
   onCloseDeal,
 }: {
+  containerRef: React.RefObject<HTMLElement | null>;
   lead: LeadDetail | null;
   loading: boolean;
   tab: DrawerTab;
@@ -684,16 +844,12 @@ function LeadDrawer({
 }) {
   return (
     <aside
-      className={[
-        "rounded-xl border bg-white shadow-sm xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto",
-        lead
-          ? "fixed inset-y-0 right-0 z-40 w-full max-w-md overflow-y-auto xl:relative xl:inset-auto xl:z-auto xl:w-auto xl:max-w-none"
-          : "hidden xl:block",
-      ].join(" ")}
+      ref={containerRef}
+      className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col overflow-y-auto border-l bg-white shadow-2xl"
     >
       {!lead ? (
         <div className="flex min-h-96 items-center justify-center p-6 text-center text-sm text-slate-500">
-          Select a lead to review details, timeline, linked properties, and actions.
+          {loading ? "Loading lead..." : "Select a lead to review details, timeline, linked properties, and actions."}
         </div>
       ) : (
         <div className="flex min-h-full flex-col">
@@ -711,7 +867,7 @@ function LeadDrawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border px-2 py-1 text-sm xl:hidden"
+                className="rounded-lg border px-2 py-1 text-sm"
               >
                 Close
               </button>
@@ -1079,7 +1235,10 @@ function CloseDealModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div
+      data-lead-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    >
       <form
         onSubmit={submit}
         className="w-full max-w-2xl space-y-4 rounded-xl bg-white p-6 shadow-xl"

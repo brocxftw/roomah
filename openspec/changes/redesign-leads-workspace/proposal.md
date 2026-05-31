@@ -6,13 +6,13 @@ The current Leads page is a navigation-heavy list that sends users to a separate
 
 - Replace the current `/app/leads` list with a modern CRM-style master-detail workspace using KPI cards, a filter bar, searchable lead grid, and persistent right-side context drawer.
 - Keep the left application navigation and overall slate palette unchanged while applying the card-based spacing, status badges, hierarchy, and operational layout from `resources/leads-design.json`.
-- Use a four-card lead KPI summary for Active Leads, New Leads, Overdue Follow-ups, and Conversion Rate; overlap with dashboard KPIs is intentional where both surfaces need the same signal.
+- Use a five-card lead KPI summary for Total Leads, New, Active, Closed, and Lost, with a month-over-month percentage change indicator on each card (up arrow in green for positive change, down arrow in red for negative change); overlap with dashboard KPIs is intentional where both surfaces need the same signal.
 - Replace `/app/leads/[leadId]` as the primary interaction model with deep-linked drawer selection via `/app/leads?lead=<id>&tab=<tab>`.
 - Redirect existing lead detail URLs into the master-detail workspace so shared links still open the selected lead context.
-- Add a sticky context drawer that dynamically displays lead summary, structured preferences, campaign attribution, linked properties, timeline with inline interaction logging, upcoming lead work, and quick actions.
+- Add a context drawer that opens only when a lead is selected, dismisses when the user clicks outside the drawer, and dynamically displays lead summary, structured preferences, campaign attribution, linked properties, timeline with inline interaction logging, upcoming lead work, and quick actions.
 - Move Close Deal into a focused modal launched from the drawer quick actions while keeping the current deal creation behavior.
 - Normalize lead preferred location before enabling the location filter by adding structured state/city/area fields, backfilling existing free-text preferences, and updating lead create/update workflows.
-- Upgrade the lead filter bar to include search, status, source, manager-only owner filtering, structured state/city filtering, advanced filters, and reset.
+- Upgrade the lead filter bar to include search, status, source, date range, manager-only agent filtering, structured state/city filtering, and reset.
 - Keep `/app/leads/new` as a full-page lead creation wizard, updated to collect structured location preferences instead of only free-text preferred location.
 
 ## Capabilities

@@ -12,7 +12,7 @@ The location filter is intentionally blocked on lead preferred-location normaliz
 
 - Make `/app/leads` a CRM-style operational workspace where users can browse, filter, select, review, and act on leads without leaving the page.
 - Keep the layout aligned with `resources/leads-design.json`: KPI row, filter bar, master grid, right-side context drawer, soft badges, cards, and visible actions.
-- Use four lead KPI cards: Active Leads, New Leads, Overdue Follow-ups, and Conversion Rate.
+- Use five lead KPI cards (Total, New, Active, Closed, Lost) with a month-over-month percentage change indicator on each card.
 - Replace the separate detail-page interaction model with deep-linked drawer selection via `/app/leads?lead=<id>&tab=<tab>`.
 - Keep existing detail URLs working by redirecting `/app/leads/[leadId]` to the workspace with the lead selected.
 - Normalize lead preferred location before shipping the state/city location filter.
@@ -31,7 +31,7 @@ The location filter is intentionally blocked on lead preferred-location normaliz
 
 ### Decision: Use drawer selection as the primary lead detail model
 
-`/app/leads` will own lead selection state. Selecting a row updates the URL query string to `/app/leads?lead=<id>&tab=<tab>` and loads that lead's detail data into a sticky right-side drawer. The drawer contains the lead summary, tabs for Details, Timeline, and Properties, and sticky quick actions.
+`/app/leads` will own lead selection state. Selecting a row updates the URL query string to `/app/leads?lead=<id>&tab=<tab>` and loads that lead's detail data into a right-side floating drawer. The drawer contains the lead summary, tabs for Details, Timeline, and Properties, and sticky quick actions. The drawer is only rendered when a lead is selected and dismisses when the user clicks anywhere outside it (selecting a different row reopens it with the new lead).
 
 Alternative considered: keep `/app/leads/[leadId]` as the full detail surface and use the drawer only as a preview. This preserves the existing route but keeps the navigation-heavy workflow that the redesign is meant to remove.
 
@@ -53,11 +53,11 @@ The drawer will not have a separate Notes tab. Manual calls, notes, and callback
 
 Alternative considered: split Notes and Timeline into separate tabs. This creates an artificial distinction in the UI even though notes are persisted through the timeline system.
 
-### Decision: Ship a four-card KPI row
+### Decision: Ship a five-card KPI row with month-over-month trend
 
-The Leads page will show Active Leads, New Leads, Overdue Follow-ups, and Conversion Rate. These cards answer how the lead pipeline is performing without forcing a five-card layout when only four metrics are needed.
+The Leads page will show Total Leads, New, Active, Closed (Won), and Lost. Each card displays the current count plus a month-over-month percentage change derived from `created_at` (leads created in the current calendar month vs leads created in the previous calendar month, scoped to the same status bucket). Positive changes render with an up arrow in green; negative changes render with a down arrow in red; cards with no prior-month data show a neutral indicator.
 
-Alternative considered: add a fifth card such as Negotiating, Won this period, or Unattributed Leads. The team chose to avoid inventing a low-confidence fifth metric just to match the design file's generic five-card pattern.
+Alternative considered: keep a four-card layout focused on operational signals (Active, New, Overdue, Conversion). The team chose the bucketed status view because it directly mirrors the lead lifecycle and pairs cleanly with month-over-month comparisons.
 
 ### Decision: Block the redesigned location filter on structured lead location data
 

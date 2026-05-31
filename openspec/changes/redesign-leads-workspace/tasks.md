@@ -56,3 +56,12 @@
 - [x] 8.2 Run backend tests covering lead creation, filtering, detail loading, property linking, timeline logging, and deal closure.
 - [ ] 8.3 Manually verify the primary workflow: filter leads, select a lead, log an interaction, link a property, close a deal, and stay in the workspace.
 - [ ] 8.4 Verify mobile/tablet behavior for the context drawer and filter bar.
+
+## 9. Iteration: Five-Card KPIs, Filter Bar, and Drawer Dismissal
+
+- [x] 9.1 Replace the four KPI cards with five cards (Total, New, Active, Closed, Lost) and compute month-over-month percentage change from `created_at` per bucket.
+- [x] 9.2 Render an up arrow in green for positive changes, a down arrow in red for negative changes, and a neutral indicator when prior-month data is missing.
+- [x] 9.3 Remove the Advanced filter button and add a date-range filter (All time, Today, This Week, This Month, This Quarter) that filters the master grid client-side by `created_at`.
+- [x] 9.4 Rename the manager-only owner filter label to "All agents" and confirm it remains hidden for non-manager roles.
+- [x] 9.5 Make the lead context drawer render only when a lead is selected and dismiss when the user clicks outside the drawer (excluding clicks on lead grid rows that switch selection).
+- [x] 9.6 Re-run frontend lint and typecheck after the iteration changes.

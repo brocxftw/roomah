@@ -1,26 +1,38 @@
 ## ADDED Requirements
 
 ### Requirement: Lead operational workspace
-The system SHALL provide a CRM-style master-detail Leads workspace at `/app/leads` that combines a lead KPI summary, filter bar, searchable master grid, and persistent right-side context drawer in a single operational screen.
+The system SHALL provide a CRM-style master-detail Leads workspace at `/app/leads` that combines a lead KPI summary, filter bar, searchable master grid, and a right-side context drawer in a single operational screen. The context drawer SHALL only be visible when a lead is selected and SHALL dismiss when the user clicks anywhere outside the drawer or selects a different row.
 
 #### Scenario: Open Leads workspace
 - **WHEN** a user navigates to `/app/leads`
-- **THEN** the system displays a four-card KPI summary, lead filters, a searchable lead grid, and an empty or selected lead context drawer without requiring navigation to a separate detail page
+- **THEN** the system displays the lead KPI summary, lead filters, and a searchable lead grid without an open context drawer until a lead is selected
 
 #### Scenario: Select lead from grid
 - **WHEN** a user selects a lead row from the master grid
-- **THEN** the system highlights the selected row, updates the URL to include `lead=<id>`, and displays that lead in the right-side context drawer
+- **THEN** the system highlights the selected row, updates the URL to include `lead=<id>`, and opens the right-side context drawer for that lead
+
+#### Scenario: Dismiss drawer on outside click
+- **WHEN** a user clicks anywhere outside the open context drawer that is not another lead row
+- **THEN** the system closes the drawer and clears the selected lead from the URL
 
 #### Scenario: Preserve selected lead deep link
 - **WHEN** a user opens `/app/leads?lead=<id>&tab=<tab>` for a lead they can access
 - **THEN** the system loads the Leads workspace with that lead selected and the requested drawer tab active
 
 ### Requirement: Lead KPI summary
-The system SHALL display a concise lead KPI summary with exactly four cards: Active Leads, New Leads, Overdue Follow-ups, and Conversion Rate.
+The system SHALL display a concise lead KPI summary with exactly five cards: Total Leads, New, Active, Closed, and Lost. Each card SHALL display the current count and a month-over-month percentage change indicator that compares leads created in the current calendar month against leads created in the previous calendar month within the same status bucket. Positive changes SHALL render with an upward arrow in a positive color; negative changes SHALL render with a downward arrow in a negative color; cards with no prior-month data SHALL render a neutral indicator.
 
 #### Scenario: Review lead KPIs
 - **WHEN** a user opens the Leads workspace
-- **THEN** the system displays the four lead KPI cards above the filter bar without requiring the user to open analytics or charts
+- **THEN** the system displays the five lead KPI cards above the filter bar with current counts and month-over-month change indicators
+
+#### Scenario: KPI shows positive month-over-month change
+- **WHEN** more leads in a status bucket were created in the current calendar month than in the previous calendar month
+- **THEN** the corresponding KPI card displays the percentage change with an upward arrow in a positive color
+
+#### Scenario: KPI shows negative month-over-month change
+- **WHEN** fewer leads in a status bucket were created in the current calendar month than in the previous calendar month
+- **THEN** the corresponding KPI card displays the percentage change with a downward arrow in a negative color
 
 ### Requirement: Structured lead preferred location
 The system SHALL store lead preferred location using structured fields for state, city, and areas while retaining the existing free-text preferred location value for compatibility and notes.
@@ -76,7 +88,7 @@ The system SHALL provide a four-step wizard to create a lead capturing customer 
 
 ### Requirement: Lead search and filter
 
-The system SHALL allow RENs to search leads by name, phone, or email substring, and to filter by status, campaign source, structured preferred state, and structured preferred city. Results SHALL be scoped to leads owned by the current user unless the user is a `MANAGER`, in which case all team leads are returned and an owner filter SHALL be available.
+The system SHALL allow RENs to search leads by name, phone, or email substring, and to filter by status, campaign source, creation date range, structured preferred state, and structured preferred city. Results SHALL be scoped to leads owned by the current user unless the user is a `MANAGER`, in which case all team leads are returned and an agent filter SHALL be available. The filter bar SHALL include a Reset control that clears all active filters.
 
 #### Scenario: Search by name substring
 
@@ -93,15 +105,25 @@ The system SHALL allow RENs to search leads by name, phone, or email substring, 
 - **WHEN** a user filters leads by preferred state or preferred city
 - **THEN** the system returns only accessible leads whose structured preferred-location fields match the selected filters
 
-#### Scenario: Manager filters by owner
+#### Scenario: Manager filters by agent
 
-- **WHEN** a manager filters leads by owner
+- **WHEN** a manager filters leads by agent
 - **THEN** the system returns only team leads owned by the selected REN
 
-#### Scenario: REN cannot filter other owners
+#### Scenario: REN cannot filter other agents
 
 - **WHEN** an REN opens the lead filter bar
-- **THEN** the system does not display the owner filter and continues to scope results to that REN's leads
+- **THEN** the system does not display the agent filter and continues to scope results to that REN's leads
+
+#### Scenario: Filter by creation date range
+
+- **WHEN** a user selects a date range filter
+- **THEN** the system displays only leads whose creation date falls within the selected range while preserving other active filters
+
+#### Scenario: Reset filters
+
+- **WHEN** a user activates the Reset control
+- **THEN** the system clears all filter selections and the URL filter parameters
 
 ### Requirement: Lead detail view
 

@@ -20,7 +20,7 @@ The system SHALL provide a CRM-style master-detail Leads workspace at `/app/lead
 - **THEN** the system loads the Leads workspace with that lead selected and the requested drawer tab active
 
 ### Requirement: Lead KPI summary
-The system SHALL display a concise lead KPI summary with exactly five cards: Total Leads, New, Active, Closed, and Lost. Each card SHALL display the current count and a month-over-month percentage change indicator that compares leads created in the current calendar month against leads created in the previous calendar month within the same status bucket. Positive changes SHALL render with an upward arrow in a positive color; negative changes SHALL render with a downward arrow in a negative color; cards with no prior-month data SHALL render a neutral indicator.
+The system SHALL display a concise lead KPI summary with exactly five cards: Total Leads, New, Active, Closed, and Lost. Each card SHALL display the current count, a representative bucket icon on the left, and a month-over-month percentage change indicator that compares leads created in the current calendar month against leads created in the previous calendar month within the same status bucket. Positive changes SHALL render with an upward arrow in a positive color; negative changes SHALL render with a downward arrow in a negative color; cards with no prior-month data SHALL render a neutral indicator.
 
 #### Scenario: Review lead KPIs
 - **WHEN** a user opens the Leads workspace
@@ -60,6 +60,36 @@ The system SHALL allow users to launch a focused Close Deal modal from the lead 
 - **WHEN** the Close Deal modal is opened from a selected lead
 - **THEN** the property selector only offers active properties linked to that lead
 
+### Requirement: Lead drawer quick actions
+The system SHALL surface, from the lead context drawer, quick actions that include WhatsApp messaging, email, schedule viewing, edit lead, close deal, and delete lead. Each action button SHALL display an icon on its leading edge to communicate the action's intent.
+
+#### Scenario: WhatsApp action launches wa.me deep link
+- **WHEN** a user activates the WhatsApp quick action on a lead with a stored phone number
+- **THEN** the system opens a `https://wa.me/<phone>` deep link with the digits-only phone number for that lead
+
+#### Scenario: Edit lead reuses the wizard
+- **WHEN** a user activates the Edit Lead quick action
+- **THEN** the system opens the lead wizard prefilled with the selected lead's data and submits subsequent changes via `PATCH /leads/{lead_id}`
+
+#### Scenario: Delete lead removes record and attributions
+- **WHEN** an REN owns a lead and activates the Delete quick action without any associated deals
+- **THEN** the system deletes the lead, its property links, timeline events, scheduled viewings, and decrements campaign attribution counters before closing the drawer
+
+#### Scenario: Delete lead with deals is rejected
+- **WHEN** a user activates the Delete quick action for a lead that has at least one closed deal
+- **THEN** the system rejects the request and surfaces an error explaining that leads with deals cannot be deleted
+
+### Requirement: Lead linked property inline controls
+The system SHALL allow users to unlink or change a linked property inline from the drawer Properties tab.
+
+#### Scenario: Unlink linked property inline
+- **WHEN** a user activates Unlink on a linked property
+- **THEN** the system marks that lead-property link inactive and refreshes the linked properties list without leaving the workspace
+
+#### Scenario: Change linked property inline
+- **WHEN** a user activates Change on a linked property and selects a different available property
+- **THEN** the system marks the original link inactive and creates a new active link to the selected property
+
 ## MODIFIED Requirements
 
 ### Requirement: Lead creation via wizard
@@ -88,7 +118,7 @@ The system SHALL provide a four-step wizard to create a lead capturing customer 
 
 ### Requirement: Lead search and filter
 
-The system SHALL allow RENs to search leads by name, phone, or email substring, and to filter by status, campaign source, creation date range, structured preferred state, and structured preferred city. Results SHALL be scoped to leads owned by the current user unless the user is a `MANAGER`, in which case all team leads are returned and an agent filter SHALL be available. The filter bar SHALL include a Reset control that clears all active filters.
+The system SHALL allow RENs to search leads by name, phone, or email substring, and to filter by status, campaign source, creation date range, and structured preferred state. Results SHALL be scoped to leads owned by the current user unless the user is a `MANAGER`, in which case all team leads are returned and an agent filter SHALL be available. The filter bar SHALL render as a single horizontal row and SHALL include a Reset control that clears all active filters.
 
 #### Scenario: Search by name substring
 
@@ -102,8 +132,8 @@ The system SHALL allow RENs to search leads by name, phone, or email substring, 
 
 #### Scenario: Filter by structured location
 
-- **WHEN** a user filters leads by preferred state or preferred city
-- **THEN** the system returns only accessible leads whose structured preferred-location fields match the selected filters
+- **WHEN** a user filters leads by preferred state
+- **THEN** the system returns only accessible leads whose structured preferred-location field matches the selected state
 
 #### Scenario: Manager filters by agent
 
@@ -127,7 +157,7 @@ The system SHALL allow RENs to search leads by name, phone, or email substring, 
 
 ### Requirement: Lead detail view
 
-The system SHALL provide lead detail review inside the `/app/leads` context drawer. The drawer SHALL display customer information, budget range, structured property preferences, current status, owning REN, campaign attribution, linked properties with their link status, upcoming lead work, and chronological timeline events. Existing `/app/leads/[leadId]` URLs SHALL redirect to `/app/leads?lead=<id>`.
+The system SHALL provide lead detail review inside the `/app/leads` context drawer. The drawer SHALL display customer information, budget range, structured property preferences, current status, owning REN, campaign attribution, linked properties with their link status and inline unlink/change controls, upcoming lead work, chronological timeline events, and quick actions for WhatsApp, email, schedule viewing, edit, close deal, and delete. The lead master grid SHALL display creation and last-updated timestamps for each row, paginate at 20 rows per page by default, and allow the user to display all rows. Existing `/app/leads/[leadId]` URLs SHALL redirect to `/app/leads?lead=<id>`.
 
 #### Scenario: Open a lead detail drawer
 
@@ -148,3 +178,13 @@ The system SHALL provide lead detail review inside the `/app/leads` context draw
 
 - **WHEN** a user links or reviews properties from the drawer Properties tab
 - **THEN** the system updates or displays the selected lead's property links without navigating away from the Leads workspace
+
+#### Scenario: Paginate lead master grid
+
+- **WHEN** the Leads workspace renders more than 20 leads matching the current filters
+- **THEN** the system shows the first 20 leads, exposes pagination controls to navigate through pages, and offers an option to show all matching leads on a single page
+
+#### Scenario: Lead master grid shows timestamps
+
+- **WHEN** the Leads workspace renders the master grid
+- **THEN** each row displays the lead's creation date and last updated timestamp instead of a derived next-action label

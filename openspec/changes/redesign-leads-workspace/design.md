@@ -31,9 +31,27 @@ The location filter is intentionally blocked on lead preferred-location normaliz
 
 ### Decision: Use drawer selection as the primary lead detail model
 
-`/app/leads` will own lead selection state. Selecting a row updates the URL query string to `/app/leads?lead=<id>&tab=<tab>` and loads that lead's detail data into a right-side floating drawer. The drawer contains the lead summary, tabs for Details, Timeline, and Properties, and sticky quick actions. The drawer is only rendered when a lead is selected and dismisses when the user clicks anywhere outside it (selecting a different row reopens it with the new lead).
+`/app/leads` will own lead selection state. Selecting a row updates the URL query string to `/app/leads?lead=<id>&tab=<tab>` and loads that lead's detail data into a right-side floating drawer. The drawer contains the lead summary, tabs for Details, Timeline, and Properties, and sticky quick actions for WhatsApp, email, schedule viewing, edit lead, close deal, and delete lead. The drawer is only rendered when a lead is selected and dismisses when the user clicks anywhere outside it (selecting a different row reopens it with the new lead).
 
 Alternative considered: keep `/app/leads/[leadId]` as the full detail surface and use the drawer only as a preview. This preserves the existing route but keeps the navigation-heavy workflow that the redesign is meant to remove.
+
+### Decision: Reuse the lead wizard for editing
+
+To avoid maintaining a parallel form UI, the Edit Lead quick action navigates to `/app/leads/new?edit=<id>`. The wizard loads the existing lead via `GET /leads/{id}`, prefills its state, and on submit issues `PATCH /leads/{id}` instead of `POST /leads`. After saving, the wizard returns the user to `/app/leads?lead=<id>` so the drawer reflects the edited values.
+
+Alternative considered: build an inline edit panel inside the drawer. Rejected because the wizard already enforces the same validation, structured location capture, and step layout we want to preserve.
+
+### Decision: Allow deletion of leads without deals
+
+Deleting a lead via `DELETE /leads/{id}` requires that the lead has no closed deals (FK from `deals.lead_id` is `ON DELETE RESTRICT`). When the lead is safe to delete, the endpoint decrements campaign counters for any active attribution and removes the row, cascading to `lead_properties`, `viewings`, and `timeline_events`. If a deal exists, the endpoint returns HTTP 409 with an actionable message and the UI surfaces it as a non-blocking error.
+
+Alternative considered: soft-delete via a `deleted_at` flag. Rejected for now because every other lead workflow (timeline, RLS, counters) treats leads as active rows; introducing a soft-delete flag would require updating each consumer. We can revisit if compliance ever requires retaining tombstones.
+
+### Decision: Paginate the master grid client-side at 20 rows
+
+The master grid paginates client-side at 20 rows per page with optional "Show all". The list endpoint already returns the team's leads ordered by `updated_at desc`, and the typical team size keeps payloads small. Pagination state is local to the page; filters always reset pagination back to page one.
+
+Alternative considered: switch to server-side pagination via `limit`/`offset`. Rejected for this iteration because the dataset is small and adding offset to the API contract would require accompanying changes to filter caching and totals.
 
 ### Decision: Redirect existing lead detail routes into the workspace
 

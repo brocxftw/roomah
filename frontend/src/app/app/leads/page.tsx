@@ -2,7 +2,26 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import {
+  Activity,
+  ArrowDownRight,
+  ArrowUpRight,
+  CalendarPlus,
+  CheckCircle2,
+  Handshake,
+  Link2,
+  Mail,
+  MessageCircle,
+  Minus,
+  Pencil,
+  RefreshCcw,
+  Trash2,
+  Unlink,
+  UserPlus,
+  Users,
+  XCircle,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type React from "react";
@@ -37,6 +56,7 @@ type Lead = {
   email: string;
   status: string;
   created_at?: string | null;
+  updated_at?: string | null;
   last_interaction_at?: string | null;
   preferred_location?: string | null;
   preferred_state?: string | null;
@@ -142,18 +162,46 @@ type KpiBucket = {
   id: "total" | "new" | "active" | "closed" | "lost";
   label: string;
   predicate: (lead: Lead) => boolean;
+  icon: LucideIcon;
+  iconClass: string;
 };
 
 const KPI_BUCKETS: KpiBucket[] = [
-  { id: "total", label: "Total leads", predicate: () => true },
-  { id: "new", label: "New", predicate: (lead) => lead.status === "New" },
+  {
+    id: "total",
+    label: "Total leads",
+    predicate: () => true,
+    icon: Users,
+    iconClass: "bg-slate-100 text-slate-700",
+  },
+  {
+    id: "new",
+    label: "New",
+    predicate: (lead) => lead.status === "New",
+    icon: UserPlus,
+    iconClass: "bg-blue-50 text-blue-600",
+  },
   {
     id: "active",
     label: "Active",
     predicate: (lead) => ACTIVE_STATUSES.includes(lead.status),
+    icon: Activity,
+    iconClass: "bg-amber-50 text-amber-600",
   },
-  { id: "closed", label: "Closed", predicate: (lead) => lead.status === "Won" },
-  { id: "lost", label: "Lost", predicate: (lead) => lead.status === "Lost" },
+  {
+    id: "closed",
+    label: "Closed",
+    predicate: (lead) => lead.status === "Won",
+    icon: CheckCircle2,
+    iconClass: "bg-emerald-50 text-emerald-600",
+  },
+  {
+    id: "lost",
+    label: "Lost",
+    predicate: (lead) => lead.status === "Lost",
+    icon: XCircle,
+    iconClass: "bg-red-50 text-red-600",
+  },
 ];
 
 function monthRange(monthsAgo: number) {
@@ -197,6 +245,8 @@ type KpiCardData = {
   label: string;
   value: number;
   changePercent: number | null;
+  icon: LucideIcon;
+  iconClass: string;
 };
 
 function computeLeadKpis(leads: Lead[]): KpiCardData[] {
@@ -225,9 +275,31 @@ function computeLeadKpis(leads: Lead[]): KpiCardData[] {
       label: bucket.label,
       value: matching.length,
       changePercent,
+      icon: bucket.icon,
+      iconClass: bucket.iconClass,
     };
   });
 }
+
+function whatsappLink(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return null;
+  const normalized = digits.startsWith("0") ? `60${digits.slice(1)}` : digits;
+  return `https://wa.me/${normalized}`;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+const PAGE_SIZE = 20;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function formatCurrency(value?: number | string | null) {
   if (value === null || value === undefined || value === "") return "-";
@@ -291,10 +363,13 @@ export default function LeadsPage() {
   const [source, setSource] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [preferredState, setPreferredState] = useState("");
-  const [preferredCity, setPreferredCity] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeValue>("");
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("details");
   const drawerRef = useRef<HTMLElement | null>(null);
+  const [page, setPage] = useState(1);
+  const [showAll, setShowAll] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [swapPropertyId, setSwapPropertyId] = useState<string | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState(false);
   const [propertyId, setPropertyId] = useState("");
@@ -321,6 +396,13 @@ export default function LeadsPage() {
       return new Date(lead.created_at).getTime() >= dateRangeStartDate.getTime();
     });
   }, [leads, isOverdueFilterActive, dateRangeStartDate]);
+  const totalPages = showAll
+    ? 1
+    : Math.max(1, Math.ceil(visibleLeads.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedLeads = showAll
+    ? visibleLeads
+    : visibleLeads.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const activeLinkedProperties =
     selectedLead?.linked_properties.filter((link) => link.status === "active") ?? [];
   const activeLinkedPropertyIds = new Set(
@@ -361,7 +443,6 @@ export default function LeadsPage() {
       if (source) params.set("source_filter", source);
       if (canFilterOwner && ownerId) params.set("owner_id", ownerId);
       if (preferredState) params.set("preferred_state", preferredState);
-      if (preferredCity) params.set("preferred_city", preferredCity);
 
       try {
         const data = await apiFetch<Lead[]>(
@@ -383,7 +464,6 @@ export default function LeadsPage() {
     source,
     ownerId,
     preferredState,
-    preferredCity,
     canFilterOwner,
     isOverdueFilterActive,
   ]);
@@ -438,8 +518,16 @@ export default function LeadsPage() {
       setSelectedLead(null);
       return;
     }
+    if (!UUID_PATTERN.test(selectedLeadId)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("lead");
+      params.delete("tab");
+      router.replace(`/app/leads${params.size ? `?${params.toString()}` : ""}`);
+      setSelectedLead(null);
+      return;
+    }
     void loadSelectedLead(selectedLeadId);
-    // loadSelectedLead depends on stable auth and selected route state.
+    // loadSelectedLead and router depend on stable auth and selected route state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLeadId, searchParams, getToken]);
 
@@ -466,10 +554,23 @@ export default function LeadsPage() {
     setSource("");
     setOwnerId("");
     setPreferredState("");
-    setPreferredCity("");
     setDateRange("");
+    setPage(1);
+    setShowAll(false);
     router.replace("/app/leads");
   }
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    query,
+    status,
+    source,
+    ownerId,
+    preferredState,
+    dateRange,
+    isOverdueFilterActive,
+  ]);
 
   useEffect(() => {
     if (!selectedLeadId) return;
@@ -524,6 +625,57 @@ export default function LeadsPage() {
     await refreshSelectedLead();
   }
 
+  async function unlinkProperty(propertyId: string) {
+    if (!selectedLead) return;
+    const token = await getToken();
+    await apiFetch(
+      `/leads/${selectedLead.id}/links/${propertyId}`,
+      token,
+      { method: "DELETE" }
+    );
+    setSwapPropertyId(null);
+    await refreshSelectedLead();
+  }
+
+  async function changeLinkedProperty(currentId: string, nextId: string) {
+    if (!selectedLead || !nextId || nextId === currentId) {
+      setSwapPropertyId(null);
+      return;
+    }
+    const token = await getToken();
+    await apiFetch(
+      `/leads/${selectedLead.id}/links/${currentId}`,
+      token,
+      { method: "DELETE" }
+    );
+    await apiFetch(`/leads/${selectedLead.id}/links`, token, {
+      method: "POST",
+      body: JSON.stringify({ property_id: nextId }),
+    });
+    setSwapPropertyId(null);
+    await refreshSelectedLead();
+  }
+
+  async function deleteSelectedLead() {
+    if (!selectedLead) return;
+    const confirmed = window.confirm(
+      `Delete ${selectedLead.name} and all attributions? This cannot be undone.`
+    );
+    if (!confirmed) return;
+    const token = await getToken();
+    setDeleting(true);
+    try {
+      await apiFetch(`/leads/${selectedLead.id}`, token, { method: "DELETE" });
+      updateSelection(null);
+      setLeads((current) => current.filter((lead) => lead.id !== selectedLead.id));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete lead");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function logManualEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedLead || !manualNote.trim()) return;
@@ -548,12 +700,12 @@ export default function LeadsPage() {
       </section>
 
       <section className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_repeat(6,minmax(130px,auto))]">
+        <div className="flex flex-wrap items-center gap-3">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search name, phone, email, or location"
-            className="min-h-11 rounded-lg border px-3 py-2 text-sm"
+            className="min-h-11 min-w-[220px] flex-1 rounded-lg border px-3 py-2 text-sm"
           />
           <select
             value={status}
@@ -619,12 +771,6 @@ export default function LeadsPage() {
               </option>
             ))}
           </select>
-          <input
-            value={preferredCity}
-            onChange={(event) => setPreferredCity(event.target.value)}
-            placeholder="City / area"
-            className="min-h-11 rounded-lg border px-3 py-2 text-sm"
-          />
           <button
             type="button"
             onClick={resetFilters}
@@ -650,14 +796,15 @@ export default function LeadsPage() {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid grid-cols-[1.4fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className="grid grid-cols-[1.4fr_1.2fr_1.0fr_0.8fr_0.9fr_0.9fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <span>Lead</span>
           <span>Contact</span>
           <span>Classification</span>
           <span>Status</span>
-          <span>Next action</span>
+          <span>Date created</span>
+          <span>Updated on</span>
         </div>
-        {visibleLeads.map((lead) => {
+        {paginatedLeads.map((lead) => {
           const selected = selectedLeadId === lead.id;
           return (
             <button
@@ -666,7 +813,7 @@ export default function LeadsPage() {
               data-lead-row="true"
               onClick={() => updateSelection(lead.id)}
               className={[
-                "grid w-full grid-cols-[1.4fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-4 border-b px-4 py-4 text-left text-sm transition last:border-b-0 hover:bg-slate-50",
+                "grid w-full grid-cols-[1.4fr_1.2fr_1.0fr_0.8fr_0.9fr_0.9fr] gap-4 border-b px-4 py-4 text-left text-sm transition last:border-b-0 hover:bg-slate-50",
                 selected ? "bg-blue-50/60 ring-1 ring-inset ring-blue-200" : "",
               ].join(" ")}
             >
@@ -709,19 +856,65 @@ export default function LeadsPage() {
                     {lead.status}
                   </span>
                 </span>
+                <span className="text-sm text-slate-600">
+                  {formatDate(lead.created_at)}
+                </span>
                 <span
                   className={[
-                    "text-sm font-medium",
-                    isOverdueLead(lead) ? "text-red-600" : "text-slate-500",
+                    "text-sm",
+                    isOverdueLead(lead)
+                      ? "font-medium text-red-600"
+                      : "text-slate-600",
                   ].join(" ")}
                 >
-                  {nextActionLabel(lead)}
+                  {formatDate(lead.updated_at ?? lead.last_interaction_at)}
                 </span>
               </button>
             );
           })}
         {!visibleLeads.length ? (
           <p className="p-6 text-sm text-muted-foreground">No leads found.</p>
+        ) : null}
+        {visibleLeads.length ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <span>
+              Showing {showAll ? visibleLeads.length : paginatedLeads.length} of {visibleLeads.length} leads
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAll((current) => !current)}
+                className="rounded-lg border px-3 py-1.5 text-xs font-medium"
+              >
+                {showAll ? "Paginate" : "Show all"}
+              </button>
+              {!showAll ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    disabled={safePage <= 1}
+                    className="rounded-lg border px-2 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2 text-xs">
+                    Page {safePage} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPage((current) => Math.min(totalPages, current + 1))
+                    }
+                    disabled={safePage >= totalPages}
+                    className="rounded-lg border px-2 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
         ) : null}
       </section>
 
@@ -749,6 +942,13 @@ export default function LeadsPage() {
           setManualNote={setManualNote}
           onLogManualEvent={logManualEvent}
           onCloseDeal={() => setCloseDealOpen(true)}
+          onDeleteLead={deleteSelectedLead}
+          deleting={deleting}
+          onUnlinkProperty={unlinkProperty}
+          onChangeProperty={changeLinkedProperty}
+          swapPropertyId={swapPropertyId}
+          setSwapPropertyId={setSwapPropertyId}
+          allProperties={properties}
         />
       ) : null}
 
@@ -773,23 +973,31 @@ function KpiCard({ card }: { card: KpiCardData }) {
   const change = card.changePercent;
   const isPositive = change !== null && change > 0;
   const isNegative = change !== null && change < 0;
-  const Icon = isPositive ? ArrowUpRight : isNegative ? ArrowDownRight : Minus;
+  const TrendIcon = isPositive ? ArrowUpRight : isNegative ? ArrowDownRight : Minus;
   const tone = isPositive
     ? "text-emerald-600"
     : isNegative
       ? "text-red-600"
       : "text-slate-400";
-  const label =
+  const trendLabel =
     change === null
       ? "No prior data"
       : `${change > 0 ? "+" : ""}${change}% vs last month`;
+  const BucketIcon = card.icon;
   return (
-    <div className="rounded-xl border bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{card.label}</p>
-      <p className="mt-2 text-3xl font-semibold text-slate-900">{card.value}</p>
-      <div className={`mt-3 flex items-center gap-1 text-xs font-medium ${tone}`}>
-        <Icon className="h-3.5 w-3.5" aria-hidden />
-        <span>{label}</span>
+    <div className="flex items-center gap-4 rounded-xl border bg-white p-5 shadow-sm">
+      <span
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${card.iconClass}`}
+      >
+        <BucketIcon className="h-5 w-5" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-slate-500">{card.label}</p>
+        <p className="mt-1 text-3xl font-semibold text-slate-900">{card.value}</p>
+        <div className={`mt-2 flex items-center gap-1 text-xs font-medium ${tone}`}>
+          <TrendIcon className="h-3.5 w-3.5" aria-hidden />
+          <span>{trendLabel}</span>
+        </div>
       </div>
     </div>
   );
@@ -818,6 +1026,13 @@ function LeadDrawer({
   setManualNote,
   onLogManualEvent,
   onCloseDeal,
+  onDeleteLead,
+  deleting,
+  onUnlinkProperty,
+  onChangeProperty,
+  swapPropertyId,
+  setSwapPropertyId,
+  allProperties,
 }: {
   containerRef: React.RefObject<HTMLElement | null>;
   lead: LeadDetail | null;
@@ -841,6 +1056,13 @@ function LeadDrawer({
   setManualNote: (value: string) => void;
   onLogManualEvent: (event: FormEvent<HTMLFormElement>) => void;
   onCloseDeal: () => void;
+  onDeleteLead: () => void;
+  deleting: boolean;
+  onUnlinkProperty: (propertyId: string) => void;
+  onChangeProperty: (currentId: string, nextId: string) => void;
+  swapPropertyId: string | null;
+  setSwapPropertyId: (value: string | null) => void;
+  allProperties: PropertyOption[];
 }) {
   return (
     <aside
@@ -1055,23 +1277,81 @@ function LeadDrawer({
               <div className="space-y-4">
                 <InfoCard title="Linked Properties">
                   <div className="space-y-2">
-                    {lead.linked_properties.map((link) => (
-                      <div
-                        key={link.properties.id}
-                        className="rounded-lg border px-3 py-2 text-sm"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">{link.properties.name}</span>
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs">
-                            {link.properties.listing_type}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {propertyDescription(link.properties)}
-                        </p>
-                      </div>
-                    ))}
-                    {!lead.linked_properties.length ? (
+                    {lead.linked_properties
+                      .filter((link) => link.status === "active")
+                      .map((link) => {
+                        const linkedIds = new Set(
+                          lead.linked_properties
+                            .filter((other) => other.status === "active")
+                            .map((other) => other.properties.id)
+                        );
+                        const swapGroup: RecordPickerGroup = {
+                          label: "Replace with",
+                          options: allProperties
+                            .filter((property) => !linkedIds.has(property.id))
+                            .map((property) => ({
+                              value: property.id,
+                              label: property.name,
+                              description: propertyDescription(property),
+                              badge: property.listing_type,
+                            })),
+                        };
+                        const isSwapping = swapPropertyId === link.properties.id;
+                        return (
+                          <div
+                            key={link.properties.id}
+                            className="rounded-lg border px-3 py-2 text-sm"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">{link.properties.name}</span>
+                              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs">
+                                {link.properties.listing_type}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {propertyDescription(link.properties)}
+                            </p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => onUnlinkProperty(link.properties.id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-700"
+                              >
+                                <Unlink className="h-3.5 w-3.5" aria-hidden />
+                                Unlink
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSwapPropertyId(
+                                    isSwapping ? null : link.properties.id
+                                  )
+                                }
+                                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-700"
+                              >
+                                <RefreshCcw className="h-3.5 w-3.5" aria-hidden />
+                                {isSwapping ? "Cancel" : "Change"}
+                              </button>
+                            </div>
+                            {isSwapping ? (
+                              <div className="mt-3 space-y-2 rounded-md border bg-slate-50 p-2">
+                                <RecordPicker
+                                  label="Replacement property"
+                                  value=""
+                                  onChange={(nextId) =>
+                                    onChangeProperty(link.properties.id, nextId)
+                                  }
+                                  groups={[swapGroup]}
+                                  placeholder="Select a different property"
+                                  searchPlaceholder="Search properties"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    {!lead.linked_properties.filter((link) => link.status === "active")
+                      .length ? (
                       <p className="text-sm text-slate-500">No linked properties.</p>
                     ) : null}
                   </div>
@@ -1088,8 +1368,9 @@ function LeadDrawer({
                   />
                   <button
                     type="submit"
-                    className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
                   >
+                    <Link2 className="h-4 w-4" aria-hidden />
                     Link property
                   </button>
                 </form>
@@ -1099,28 +1380,50 @@ function LeadDrawer({
 
           <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white p-4">
             <a
-              href={`tel:${lead.phone}`}
-              className="rounded-lg border px-3 py-2 text-center text-sm font-medium"
+              href={whatsappLink(lead.phone) ?? "#"}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
             >
-              Call
+              <MessageCircle className="h-4 w-4" aria-hidden />
+              WhatsApp
             </a>
             <a
               href={`mailto:${lead.email}`}
-              className="rounded-lg border px-3 py-2 text-center text-sm font-medium"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
             >
+              <Mail className="h-4 w-4" aria-hidden />
               Email
             </a>
             <Link
               href="/app/viewings/new"
-              className="rounded-lg border px-3 py-2 text-center text-sm font-medium"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
             >
+              <CalendarPlus className="h-4 w-4" aria-hidden />
               Schedule viewing
+            </Link>
+            <Link
+              href={`/app/leads/new?edit=${lead.id}`}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
+            >
+              <Pencil className="h-4 w-4" aria-hidden />
+              Edit lead
             </Link>
             <button
               type="button"
-              onClick={onCloseDeal}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              onClick={onDeleteLead}
+              disabled={deleting}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
             >
+              <Trash2 className="h-4 w-4" aria-hidden />
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
+            <button
+              type="button"
+              onClick={onCloseDeal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+            >
+              <Handshake className="h-4 w-4" aria-hidden />
               Close deal
             </button>
           </div>

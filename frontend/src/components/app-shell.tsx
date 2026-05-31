@@ -100,6 +100,10 @@ const pageMeta: Record<
     description: "Manage active conversations and next actions.",
     primaryAction: { label: "+ Add Lead", href: "/app/leads/new" },
   },
+  "/app/leads/new": {
+    title: "Add lead",
+    description: "Capture customer details, budget, and preferences.",
+  },
   "/app/properties": {
     title: "Properties",
     description: "Maintain listings and property availability.",
@@ -129,20 +133,30 @@ const pageMeta: Record<
   },
 };
 
-function getPageMeta(pathname: string) {
+function getPageMeta(
+  pathname: string,
+  searchParams?: { get: (key: string) => string | null }
+) {
   const entries = Object.entries(pageMeta).sort(
     ([a], [b]) => b.length - a.length
   );
   const matched = entries.find(
     ([key]) => pathname === key || pathname.startsWith(`${key}/`)
   );
-  if (!matched) {
-    return {
+  const base =
+    matched?.[1] ?? {
       title: "Workspace",
       description: "Stay focused on your next best action.",
     };
+  if (pathname === "/app/leads/new" && searchParams?.get("edit")) {
+    return {
+      ...base,
+      title: "Edit lead",
+      description: "Update customer details, budget, and preferences.",
+      primaryAction: undefined,
+    };
   }
-  return matched[1];
+  return base;
 }
 
 function isNavActive(pathname: string, href: string) {
@@ -218,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const canSeeManager = currentUser?.role === "MANAGER";
   const sidebarExpanded = sidebarHovered;
   const sidebarCompact = !sidebarExpanded;
-  const shellMeta = getPageMeta(pathname);
+  const shellMeta = getPageMeta(pathname, searchParams);
   const dashboardRange = searchParams.get("date_range") ?? "month";
   const userInitials = currentUser?.full_name
     ? currentUser.full_name

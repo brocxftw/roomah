@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 
 import { CampaignPicker } from "@/components/campaign-picker";
 import { apiFetch } from "@/lib/api";
@@ -15,26 +15,83 @@ type Lead = {
   id: string;
 };
 
+type LeadDetail = {
+  id: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  budget_min?: number | string | null;
+  budget_max?: number | string | null;
+  preferred_location?: string | null;
+  preferred_state?: string | null;
+  preferred_city?: string | null;
+  preferred_areas?: string[] | null;
+  preferred_property_type?: string | null;
+  campaign_id?: string | null;
+};
+
 const steps = ["Customer Details", "Budget", "Preferences", "Review"];
+
+const emptyForm = {
+  name: "",
+  phone: "",
+  email: "",
+  budget_min: "",
+  budget_max: "",
+  preferred_location: "",
+  preferred_state: "",
+  preferred_city: "",
+  preferred_areas: "",
+  preferred_property_type: "",
+  campaign_id: null as string | null,
+};
 
 export default function NewLeadPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editLeadId = searchParams.get("edit");
+  const isEditing = Boolean(editLeadId);
   const { getToken } = useAuth();
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    budget_min: "",
-    budget_max: "",
-    preferred_location: "",
-    preferred_state: "",
-    preferred_city: "",
-    preferred_areas: "",
-    preferred_property_type: "",
-    campaign_id: null as string | null,
-  });
+  const [form, setForm] = useState({ ...emptyForm });
+  const [loading, setLoading] = useState<boolean>(isEditing);
+
+  useEffect(() => {
+    if (!editLeadId) return;
+    let cancelled = false;
+    async function loadLead() {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        const lead = await apiFetch<LeadDetail>(`/leads/${editLeadId}`, token);
+        if (cancelled) return;
+        setForm({
+          name: lead.name ?? "",
+          phone: lead.phone ?? "",
+          email: lead.email ?? "",
+          budget_min: lead.budget_min ? String(lead.budget_min) : "",
+          budget_max: lead.budget_max ? String(lead.budget_max) : "",
+          preferred_location: lead.preferred_location ?? "",
+          preferred_state: lead.preferred_state ?? "",
+          preferred_city: lead.preferred_city ?? "",
+          preferred_areas: (lead.preferred_areas ?? []).join(", "),
+          preferred_property_type: lead.preferred_property_type ?? "",
+          campaign_id: lead.campaign_id ?? null,
+        });
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load lead");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadLead();
+    return () => {
+      cancelled = true;
+    };
+  }, [editLeadId, getToken]);
 
   const updateField = (field: keyof typeof form, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -86,12 +143,33 @@ export default function NewLeadPage() {
         .filter(Boolean),
       preferred_property_type: form.preferred_property_type || null,
     };
-    const lead = await apiFetch<Lead>("/leads", token, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    router.push(`/app/leads?lead=${lead.id}`);
+
+    try {
+      if (isEditing && editLeadId) {
+        await apiFetch<Lead>(`/leads/${editLeadId}`, token, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        router.push(`/app/leads?lead=${editLeadId}`);
+      } else {
+        const lead = await apiFetch<Lead>("/leads", token, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        router.push(`/app/leads?lead=${lead.id}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save lead");
+    }
   };
+
+  if (loading) {
+    return (
+      <p className="mx-auto max-w-2xl text-sm text-muted-foreground">
+        Loading lead...
+      </p>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="mx-auto max-w-2xl space-y-6">
@@ -247,7 +325,11 @@ export default function NewLeadPage() {
           type="submit"
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
         >
-          {step === steps.length - 1 ? "Create Lead" : "Continue"}
+          {step === steps.length - 1
+            ? isEditing
+              ? "Update"
+              : "Create Lead"
+            : "Continue"}
         </button>
       </div>
     </form>

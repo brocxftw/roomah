@@ -65,3 +65,16 @@
 - [x] 9.4 Rename the manager-only owner filter label to "All agents" and confirm it remains hidden for non-manager roles.
 - [x] 9.5 Make the lead context drawer render only when a lead is selected and dismiss when the user clicks outside the drawer (excluding clicks on lead grid rows that switch selection).
 - [x] 9.6 Re-run frontend lint and typecheck after the iteration changes.
+
+## 10. Iteration: Drawer Quick Actions, Editable Wizard, Pagination
+
+- [x] 10.1 Add a representative bucket icon to each KPI card (Total, New, Active, Closed, Lost) anchored to the left side of the card.
+- [x] 10.2 Collapse the filter bar to a single horizontal row, remove the city/area free-text input, and keep Reset inline.
+- [x] 10.3 Replace the master-grid Next Action column with Updated On and add a Date Created column.
+- [x] 10.4 Paginate the master grid at 20 rows per page with a Show All toggle that resets when filters change.
+- [x] 10.5 Add backend `DELETE /leads/{lead_id}` that decrements campaign counters, deletes the row, and rejects deletion when a deal exists; cover with pytest.
+- [x] 10.6 Extend the lead wizard to accept `?edit=<id>`, prefill via `GET /leads/{id}`, and submit via `PATCH /leads/{id}`.
+- [x] 10.7 Replace the drawer Call action with WhatsApp using a `wa.me` deep link, and add Edit Lead and Delete Lead quick actions with confirmation.
+- [x] 10.8 Add per-row Unlink and Change controls in the drawer Properties tab.
+- [x] 10.9 Add leading icons to all drawer action buttons (WhatsApp, Email, Schedule viewing, Close deal, Edit, Delete, Unlink, Change).
+- [x] 10.10 Re-run backend pytest and frontend lint/typecheck after the iteration changes.

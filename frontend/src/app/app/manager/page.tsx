@@ -173,8 +173,10 @@ export default function ManagerDashboardPage() {
             />
             <span>{row.active_leads} active</span>
             <span>
-              A {row.pipeline.Active ?? 0} / N {row.pipeline.Negotiating ?? 0} /
-              C {row.pipeline.Closed ?? 0} / L {row.pipeline.Lost ?? 0}
+              N {row.pipeline.New ?? 0} / C {row.pipeline.Contacted ?? 0} / Q{" "}
+              {row.pipeline.Qualified ?? 0} / P {row.pipeline.Proposal ?? 0} /
+              Ng {row.pipeline.Negotiation ?? 0} / W {row.pipeline.Won ?? 0} /
+              L {row.pipeline.Lost ?? 0}
             </span>
             <span>{row.viewing_count} viewings</span>
             <span>RM {row.commission}</span>

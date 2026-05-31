@@ -1,0 +1,382 @@
+{
+    "design_system_name": "ROOMAH CRM - Master Detail Workspace",
+    "design_style": {
+      "category": "Modern SaaS CRM",
+      "subtype": "Operational Workspace",
+      "personality": [
+        "Professional",
+        "Clean",
+        "Efficient",
+        "Enterprise-grade",
+        "Task-oriented",
+        "Data-centric"
+      ],
+      "visual_characteristics": [
+        "Light content area",
+        "Dark branded navigation",
+        "Card-based information architecture",
+        "High whitespace usage",
+        "Minimal shadows",
+        "Soft borders",
+        "Rounded components",
+        "Clear visual hierarchy",
+        "Dense but readable data presentation"
+      ]
+    },
+  
+    "core_layout_pattern": {
+      "type": "Three-Panel CRM Workspace",
+      "purpose": "Master-detail workflow management",
+      "structure": {
+        "left_panel": {
+          "role": "Application Navigation",
+          "width": "240-260px",
+          "fixed": true
+        },
+        "center_panel": {
+          "role": "Primary Workspace",
+          "width": "fluid",
+          "priority": "highest"
+        },
+        "right_panel": {
+          "role": "Context Drawer",
+          "width": "320-360px",
+          "fixed": true,
+          "sticky": true
+        }
+      }
+    },
+  
+    "design_philosophy": {
+      "primary_goal": "Enable users to process records without navigating away from the page.",
+      "ux_principles": [
+        "List on the left, details on the right.",
+        "Selection updates context panel instantly.",
+        "Actions remain visible at all times.",
+        "Filtering should require minimal clicks.",
+        "Records should be actionable from the list.",
+        "Details should never interrupt workflow."
+      ]
+    },
+  
+    "color_palette": {
+      "navigation": {
+        "background": "#0B1F3A",
+        "secondary_background": "#102A4D",
+        "active_highlight": "#00D4FF",
+        "text": "#FFFFFF"
+      },
+      "content": {
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "border": "#E5E7EB"
+      },
+      "text": {
+        "primary": "#111827",
+        "secondary": "#6B7280",
+        "muted": "#9CA3AF"
+      },
+      "status": {
+        "success": "#22C55E",
+        "warning": "#F59E0B",
+        "danger": "#EF4444",
+        "info": "#3B82F6"
+      }
+    },
+  
+    "spacing_system": {
+      "base_unit": 8,
+      "page_padding": 24,
+      "section_gap": 20,
+      "card_padding": 20,
+      "element_gap": 12,
+      "row_height": "comfortable"
+    },
+  
+    "typography": {
+      "font_family": "Inter",
+      "hierarchy": {
+        "page_title": {
+          "size": "32px",
+          "weight": 700
+        },
+        "section_title": {
+          "size": "18px",
+          "weight": 600
+        },
+        "body": {
+          "size": "14px",
+          "weight": 400
+        },
+        "caption": {
+          "size": "12px",
+          "weight": 400
+        }
+      }
+    },
+  
+    "sidebar": {
+      "background": "dark_gradient",
+      "layout": {
+        "logo": "top",
+        "navigation": "middle",
+        "utilities": "bottom"
+      },
+      "navigation_items": {
+        "height": 48,
+        "icon_left": true,
+        "label_visible": true,
+        "active_state": {
+          "background_highlight": true,
+          "left_accent_bar": true
+        }
+      }
+    },
+  
+    "topbar": {
+      "height": 72,
+      "background": "#FFFFFF",
+      "border_bottom": true,
+      "layout": {
+        "left": [
+          "sidebar_toggle",
+          "global_search"
+        ],
+        "right": [
+          "notifications",
+          "calendar",
+          "global_create_button",
+          "user_profile"
+        ]
+      },
+      "search": {
+        "width": "large",
+        "shape": "pill",
+        "keyboard_shortcut_hint": true
+      }
+    },
+  
+    "page_composition": {
+      "header": {
+        "layout": "horizontal",
+        "left": [
+          "page_title",
+          "page_description"
+        ],
+        "right": [
+          "secondary_action",
+          "primary_action"
+        ]
+      },
+  
+      "content_flow": [
+        "summary_metrics",
+        "filter_bar",
+        "master_table"
+      ]
+    },
+  
+    "summary_metrics": {
+      "purpose": "Immediate performance overview",
+      "layout": "horizontal_card_row",
+      "cards_per_row": 5,
+      "card_structure": {
+        "title": "top_left",
+        "metric": "large_center",
+        "trend_indicator": "bottom"
+      }
+    },
+  
+    "filter_bar": {
+      "layout": "single_row",
+      "components": [
+        "search_input",
+        "status_filter",
+        "source_filter",
+        "owner_filter",
+        "location_filter",
+        "advanced_filter_button",
+        "reset_button"
+      ],
+      "style": {
+        "inline": true,
+        "equal_height": true,
+        "contained_inside_card": true
+      }
+    },
+  
+    "master_table": {
+      "purpose": "Primary operational workspace",
+      "style": "crm_data_grid",
+  
+      "structure": {
+        "header": true,
+        "pagination": true,
+        "row_selection": true,
+        "overflow_menu": true
+      },
+  
+      "columns": {
+        "identity": {
+          "contains": [
+            "avatar",
+            "primary_label",
+            "secondary_metadata"
+          ]
+        },
+        "contact": {
+          "contains": [
+            "phone",
+            "email"
+          ]
+        },
+        "classification": {
+          "contains": [
+            "tags",
+            "badges",
+            "ownership"
+          ]
+        },
+        "status": {
+          "badge_based": true
+        },
+        "next_action": {
+          "urgency_coloring": true
+        }
+      },
+  
+      "row_behavior": {
+        "clickable": true,
+        "opens_detail_panel": true,
+        "highlight_selected": true
+      }
+    },
+  
+    "detail_panel": {
+      "purpose": "Contextual record workspace",
+      "position": "right",
+  
+      "sections": [
+        "entity_summary",
+        "tab_navigation",
+        "attributes",
+        "upcoming_tasks",
+        "quick_actions"
+      ],
+  
+      "entity_summary": {
+        "contains": [
+          "avatar",
+          "name",
+          "status",
+          "identifier",
+          "contact_information"
+        ]
+      },
+  
+      "tabs": {
+        "style": "underline_navigation",
+        "position": "horizontal"
+      },
+  
+      "information_cards": {
+        "stacked": true,
+        "spacing": 16
+      }
+    },
+  
+    "quick_actions": {
+      "placement": "bottom_of_detail_panel",
+      "style": {
+        "full_width": false,
+        "grouped": true
+      }
+    },
+  
+    "badges": {
+      "style": "soft_filled",
+      "shape": "pill",
+      "usage": [
+        "status",
+        "source",
+        "category",
+        "workflow_stage"
+      ]
+    },
+  
+    "cards": {
+      "background": "#FFFFFF",
+      "border": "1px solid #E5E7EB",
+      "radius": "12px",
+      "shadow": "very_subtle",
+      "padding": "20px"
+    },
+  
+    "component_patterns": {
+      "crm_module_pages": {
+        "shared_layout": true,
+  
+        "always_include": [
+          "page_header",
+          "summary_metrics",
+          "filter_bar",
+          "master_table",
+          "detail_panel"
+        ]
+      },
+  
+      "entities_supported": [
+        "leads",
+        "properties",
+        "viewings",
+        "campaigns",
+        "deals",
+        "agents"
+      ]
+    },
+  
+    "interaction_model": {
+      "primary_pattern": "Master Detail",
+  
+      "workflow": [
+        "Browse records",
+        "Filter records",
+        "Select record",
+        "Review context panel",
+        "Perform action",
+        "Return to list"
+      ],
+  
+      "navigation_goal": "Minimize page transitions"
+    },
+  
+    "responsiveness": {
+      "desktop": {
+        "three_column_layout": true
+      },
+  
+      "tablet": {
+        "detail_panel_collapsible": true
+      },
+  
+      "mobile": {
+        "detail_panel_becomes_drawer": true,
+        "single_column_layout": true
+      }
+    },
+  
+    "cursor_generation_rules": [
+      "Always use the master-detail pattern for CRM entities.",
+      "Keep filters above tables.",
+      "Keep summary metrics above filters.",
+      "Use the right-side panel instead of separate detail pages whenever possible.",
+      "Use cards to separate information groups.",
+      "Use soft badges for status and categorisation.",
+      "Keep actions visible without scrolling.",
+      "Preserve consistent spacing and card styling across all modules.",
+      "Avoid large charts on operational pages.",
+      "Prioritise workflow execution over analytics."
+    ],
+  
+    "page_archetype": "Operational CRM List View with Context Drawer"
+  }

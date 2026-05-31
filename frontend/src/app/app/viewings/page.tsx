@@ -3,10 +3,12 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
+import { isViewingToday } from "@/lib/workspace-filters";
 
 type Viewing = {
   id: string;
@@ -24,6 +26,7 @@ type Viewing = {
 
 export default function ViewingsPage() {
   const { getToken } = useAuth();
+  const searchParams = useSearchParams();
   const [viewings, setViewings] = useState<Viewing[]>([]);
   const [completionNotes, setCompletionNotes] = useState<
     Record<string, string>
@@ -35,6 +38,10 @@ export default function ViewingsPage() {
     Record<string, string>
   >({});
   const [error, setError] = useState<string | null>(null);
+  const isTodayFilterActive = searchParams.get("today") === "true";
+  const visibleViewings = isTodayFilterActive
+    ? viewings.filter((viewing) => isViewingToday(viewing))
+    : viewings;
 
   async function loadViewings() {
     const token = await getToken();
@@ -94,8 +101,20 @@ export default function ViewingsPage() {
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
+      {isTodayFilterActive ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>Showing viewings scheduled for today.</span>
+          <Link
+            href="/app/viewings"
+            className="font-medium underline underline-offset-4"
+          >
+            Clear filter
+          </Link>
+        </div>
+      ) : null}
+
       <div className="space-y-4">
-        {viewings.map((viewing) => {
+        {visibleViewings.map((viewing) => {
           const isPast =
             new Date(viewing.scheduled_at).getTime() <= new Date().getTime();
           return (
@@ -165,7 +184,7 @@ export default function ViewingsPage() {
             </div>
           );
         })}
-        {!viewings.length ? (
+        {!visibleViewings.length ? (
           <p className="rounded-lg border p-4 text-sm text-muted-foreground">
             No viewings scheduled.
           </p>

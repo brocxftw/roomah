@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { AuthForm } from "@/components/auth-form";
 
@@ -19,7 +20,9 @@ export default function Home() {
           </p>
         </div>
 
-        <AuthForm />
+        <Suspense fallback={<p className="text-sm text-zinc-500">Loading sign in...</p>}>
+          <AuthForm />
+        </Suspense>
         <Link href="/app" className="text-sm font-medium text-zinc-600">
           Open workspace if already signed in
         </Link>

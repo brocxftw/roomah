@@ -198,7 +198,7 @@ def create_lead(
         {
             "team_id": auth.team_id,
             "ren_id": user["id"],
-            "status": LeadStatus.ACTIVE.value,
+            "status": LeadStatus.NEW.value,
         }
     )
     response = supabase.table("leads").insert(insert_payload).execute()
@@ -351,7 +351,7 @@ def update_lead(
     from_campaign = None
     to_campaign = None
     if campaign_was_changed:
-        if lead["status"] == LeadStatus.CLOSED.value and user["role"] != "MANAGER":
+        if lead["status"] == LeadStatus.WON.value and user["role"] != "MANAGER":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only managers can re-attribute a closed lead",
@@ -373,7 +373,7 @@ def update_lead(
             from_campaign_id=lead.get("campaign_id"),
             to_campaign_id=update_payload.get("campaign_id"),
         )
-        if lead["status"] == LeadStatus.CLOSED.value:
+        if lead["status"] == LeadStatus.WON.value:
             counters.swap_conversion(
                 from_campaign_id=lead.get("campaign_id"),
                 to_campaign_id=update_payload.get("campaign_id"),

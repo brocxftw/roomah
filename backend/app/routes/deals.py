@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import AuthContext, get_auth_context
 from app.campaigns import CampaignCountersService
-from app.models import ListingType, TimelineEventType
+from app.models import LeadStatus, ListingType, TimelineEventType
 from app.supabase import get_service_supabase
 from app.timeline import emit_timeline_event
 from app.users import get_current_user_record, get_team_user_references
@@ -86,7 +86,7 @@ def create_deal(
         )
     lead = (
         supabase.table("leads")
-        .select("id,campaign_id")
+        .select("id,campaign_id,status")
         .eq("id", str(payload.lead_id))
         .eq("team_id", auth.team_id)
         .single()
@@ -154,7 +154,7 @@ def create_deal(
     )
     CampaignCountersService(supabase).increment_conversion(lead.get("campaign_id"))
 
-    supabase.table("leads").update({"status": "Closed"}).eq(
+    supabase.table("leads").update({"status": LeadStatus.WON.value}).eq(
         "id", str(payload.lead_id)
     ).execute()
     supabase.table("properties").update({"status": "Inactive"}).eq(
@@ -180,7 +180,7 @@ def create_deal(
             .neq("lead_id", str(payload.lead_id))
             .execute()
         )
-        supabase.table("leads").update({"status": "Lost"}).in_(
+        supabase.table("leads").update({"status": LeadStatus.LOST.value}).in_(
             "id", other_lead_ids
         ).execute()
 
@@ -203,7 +203,7 @@ def create_deal(
         auth=auth,
         lead_id=payload.lead_id,
         event_type=TimelineEventType.LEAD_STATUS_CHANGED,
-        payload={"from": "Negotiating", "to": "Closed"},
+        payload={"from": lead["status"], "to": LeadStatus.WON.value},
         created_by=user["id"],
     )
     for lead_id in other_lead_ids:
@@ -220,7 +220,7 @@ def create_deal(
             auth=auth,
             lead_id=lead_id,
             event_type=TimelineEventType.LEAD_STATUS_CHANGED,
-            payload={"from": "Active", "to": "Lost"},
+            payload={"from": LeadStatus.CONTACTED.value, "to": LeadStatus.LOST.value},
             created_by=user["id"],
         )
 

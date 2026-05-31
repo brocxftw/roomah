@@ -4,12 +4,18 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
 from app.auth import AuthContext, get_auth_context
+from app.models import LeadStatus
 from app.supabase import get_service_supabase
 from app.users import get_current_user_record, require_manager
 
 router = APIRouter(prefix="/manager", tags=["manager"])
+
+
+class TeamTargetUpdate(BaseModel):
+    monthly_target_amount: Decimal | None = Field(default=None, ge=0)
 
 
 @router.get("/dashboard")
@@ -64,7 +70,15 @@ def get_manager_dashboard(
     )
 
     pipeline: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"Active": 0, "Negotiating": 0, "Closed": 0, "Lost": 0}
+        lambda: {
+            LeadStatus.NEW.value: 0,
+            LeadStatus.CONTACTED.value: 0,
+            LeadStatus.QUALIFIED.value: 0,
+            LeadStatus.PROPOSAL.value: 0,
+            LeadStatus.NEGOTIATION.value: 0,
+            LeadStatus.WON.value: 0,
+            LeadStatus.LOST.value: 0,
+        }
     )
     for lead in leads:
         pipeline[lead["ren_id"]][lead["status"]] += 1
@@ -92,8 +106,16 @@ def get_manager_dashboard(
             "ren_email": ren["email"],
             "ren_phone_number": ren.get("phone_number"),
             "ren_active_status": ren["active_status"],
-            "active_leads": pipeline[ren["id"]]["Active"]
-            + pipeline[ren["id"]]["Negotiating"],
+            "active_leads": sum(
+                pipeline[ren["id"]][status]
+                for status in [
+                    LeadStatus.NEW.value,
+                    LeadStatus.CONTACTED.value,
+                    LeadStatus.QUALIFIED.value,
+                    LeadStatus.PROPOSAL.value,
+                    LeadStatus.NEGOTIATION.value,
+                ]
+            ),
             "pipeline": pipeline[ren["id"]],
             "viewing_count": viewing_counts[ren["id"]],
             "commission": str(current_commission[ren["id"]]),
@@ -103,6 +125,23 @@ def get_manager_dashboard(
         }
         for ren in users
     ]
+
+
+@router.patch("/team-target")
+def update_team_target(
+    payload: TeamTargetUpdate,
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    supabase = get_service_supabase()
+    user = get_current_user_record(auth)
+    require_manager(user)
+    response = (
+        supabase.table("teams")
+        .update(payload.model_dump(mode="json"))
+        .eq("id", auth.team_id)
+        .execute()
+    )
+    return response.data[0]
 
 
 @router.get("/campaigns")

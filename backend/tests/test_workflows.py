@@ -18,8 +18,10 @@ from app.models import (
     TimelineEventType,
 )
 from app.routes import campaigns as campaign_routes
+from app.routes import dashboard as dashboard_routes
 from app.routes import deals as deal_routes
 from app.routes import leads as lead_routes
+from app.routes import manager as manager_routes
 from app.routes import properties as property_routes
 from app.routes import users as user_routes
 from app.routes import viewings as viewing_routes
@@ -226,6 +228,13 @@ class FakeSupabase:
     def __init__(self) -> None:
         self.counters: dict[str, int] = {}
         self.tables: dict[str, list[dict[str, Any]]] = {
+            "teams": [
+                {
+                    "id": TEAM_ID,
+                    "name": "Default Team",
+                    "monthly_target_amount": None,
+                }
+            ],
             "users": [
                 self.user(REN_ID, "ren@example.com", "REN"),
                 self.user(MANAGER_ID, "manager@example.com", "MANAGER"),
@@ -259,6 +268,7 @@ class FakeSupabase:
             "full_name": email.split("@", maxsplit=1)[0],
             "phone_number": None,
             "active_status": True,
+            "monthly_target_amount": None,
         }
 
     def table(self, table_name: str) -> FakeQuery:
@@ -300,7 +310,9 @@ def property_required_fields(**overrides: Any) -> dict[str, Any]:
 def patch_supabase(monkeypatch: pytest.MonkeyPatch, supabase: FakeSupabase) -> None:
     modules = [
         campaign_routes,
+        dashboard_routes,
         lead_routes,
+        manager_routes,
         property_routes,
         viewing_routes,
         deal_routes,
@@ -388,7 +400,7 @@ def test_full_happy_path_cascades_and_writes_timeline(monkeypatch) -> None:
 
     assert completed["status"] == "completed"
     assert deal["commission_total"] == "7000.00"
-    assert supabase.tables["leads"][0]["status"] == "Closed"
+    assert supabase.tables["leads"][0]["status"] == "Won"
     assert supabase.tables["properties"][0]["status"] == "Inactive"
     assert {event["event_type"] for event in supabase.tables["timeline_events"]} >= {
         TimelineEventType.LEAD_CREATED.value,
@@ -451,15 +463,15 @@ def test_property_cascade_marks_other_leads_lost_and_revive_is_allowed(
 
     revived = lead_routes.update_lead(
         lead_id=other_lead["id"],
-        payload=lead_routes.LeadUpdate(status=LeadStatus.ACTIVE),
+        payload=lead_routes.LeadUpdate(status=LeadStatus.CONTACTED),
         auth=auth,
     )
 
-    assert revived["status"] == "Active"
+    assert revived["status"] == "Contacted"
     assert any(
         event["event_type"] == TimelineEventType.LEAD_STATUS_CHANGED.value
         and event["lead_id"] == other_lead["id"]
-        and event["payload"] == {"from": "Lost", "to": "Active"}
+        and event["payload"] == {"from": "Lost", "to": "Contacted"}
         for event in supabase.tables["timeline_events"]
     )
 
@@ -920,3 +932,143 @@ def test_manager_can_patch_team_member_identity_and_status(monkeypatch) -> None:
     assert updated["full_name"] == "Alice Tan"
     assert updated["phone_number"] == "+60123456789"
     assert updated["active_status"] is False
+
+
+def test_ren_can_patch_monthly_target_and_dashboard_uses_personal_scope(
+    monkeypatch,
+) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    updated = user_routes.update_me(
+        payload=user_routes.UserSelfUpdate(monthly_target_amount=Decimal("500000")),
+        auth=auth,
+    )
+    dashboard = dashboard_routes.get_dashboard(auth=auth)
+
+    assert updated["monthly_target_amount"] == "500000"
+    assert dashboard["target_progress"]["scope"] == "personal"
+    assert dashboard["target_progress"]["target_amount"] == "500000"
+
+
+def test_dashboard_returns_six_stage_pipeline_funnel_with_values(
+    monkeypatch,
+) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    now = datetime.now(UTC).isoformat()
+    lead_statuses = [
+        "New",
+        "Contacted",
+        "Qualified",
+        "Proposal",
+        "Negotiation",
+        "Won",
+        "Won",
+    ]
+    for index, status_value in enumerate(lead_statuses, start=1):
+        lead_id = f"lead-{index}"
+        property_id = f"property-{index}"
+        supabase.tables["leads"].append(
+            {
+                "id": lead_id,
+                "team_id": TEAM_ID,
+                "ren_id": REN_ID,
+                "name": f"Lead {index}",
+                "phone": f"6010000000{index}",
+                "email": f"lead{index}@example.com",
+                "status": status_value,
+                "created_at": now,
+                "updated_at": now,
+                "last_interaction_at": now,
+                "campaign_id": None,
+            }
+        )
+        supabase.tables["properties"].append(
+            {
+                "id": property_id,
+                "team_id": TEAM_ID,
+                "ren_id": REN_ID,
+                "status": "Active",
+                "listing_price": "100000",
+                "price": "90000",
+            }
+        )
+        supabase.tables["lead_properties"].append(
+            {
+                "lead_id": lead_id,
+                "property_id": property_id,
+                "status": "active",
+                "created_at": now,
+            }
+        )
+        if status_value == "Won":
+            supabase.tables["deals"].append(
+                {
+                    "id": f"deal-{index}",
+                    "team_id": TEAM_ID,
+                    "lead_id": lead_id,
+                    "property_id": property_id,
+                    "ren_id": REN_ID,
+                    "sale_price": "500000",
+                    "commission_rate": "0.02",
+                    "agency_fee": "1000",
+                    "lawyer_fees": "2000",
+                    "commission_total": "7000",
+                    "commission_override": None,
+                    "closed_at": now,
+                    "created_at": now,
+                }
+            )
+
+    dashboard = dashboard_routes.get_dashboard(auth=auth)
+    stages = {stage["stage"]: stage for stage in dashboard["funnel"]}
+
+    assert list(stages) == [
+        "New",
+        "Contacted",
+        "Qualified",
+        "Proposal",
+        "Negotiation",
+        "Won",
+    ]
+    assert stages["New"]["count"] == 1
+    assert stages["New"]["value"] == "100000"
+    assert stages["Won"]["count"] == 2
+    assert stages["Won"]["value"] == "1000000"
+    assert dashboard["pipeline_conversion_denominator"] == 5
+    assert dashboard["pipeline_conversion_rate"] == 0.4
+
+
+def test_manager_can_patch_team_target_and_dashboard_uses_team_scope(
+    monkeypatch,
+) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+
+    updated = manager_routes.update_team_target(
+        payload=manager_routes.TeamTargetUpdate(
+            monthly_target_amount=Decimal("1500000")
+        ),
+        auth=auth,
+    )
+    dashboard = dashboard_routes.get_dashboard(auth=auth)
+
+    assert updated["monthly_target_amount"] == "1500000"
+    assert dashboard["target_progress"]["scope"] == "team"
+    assert dashboard["target_progress"]["target_amount"] == "1500000"
+    assert dashboard["personal_progress"] is not None
+    assert dashboard["personal_progress"]["scope"] == "personal"
+    funnel_stages = {stage["stage"] for stage in dashboard["funnel"]}
+    assert funnel_stages == {
+        "New",
+        "Contacted",
+        "Qualified",
+        "Proposal",
+        "Negotiation",
+        "Won",
+    }
+    assert dashboard["pipeline_conversion_rate"] is None

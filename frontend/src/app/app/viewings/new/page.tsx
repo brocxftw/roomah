@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { RecordPicker, type RecordPickerGroup } from "@/components/record-picker";
@@ -54,10 +54,12 @@ function propertyDescription(property: PropertyOption) {
 
 export default function NewViewingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getToken } = useAuth();
+  const preselectedPropertyId = searchParams.get("property") ?? "";
   const [form, setForm] = useState({
     lead_id: "",
-    property_id: "",
+    property_id: preselectedPropertyId,
     scheduled_at: "",
     assigned_ren_id: "",
   });

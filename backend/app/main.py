@@ -1,7 +1,8 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.auth import SupabaseAuthMiddleware
 from app.core.config import get_settings
@@ -20,17 +21,61 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="ROOMAH API", version="0.1.0")
 settings = get_settings()
+
+
+def _split_origins(value: str) -> list[str]:
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+
+_frontend_origins = _split_origins(settings.frontend_origin)
+# Common local development origins to avoid CORS errors when the dev server
+# binds to 127.0.0.1 or an alternative port. Production should rely on the
+# explicit value of FRONTEND_ORIGIN.
+_local_dev_origins = {
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+}
+allowed_origins = sorted(set(_frontend_origins) | _local_dev_origins)
 
 app.add_middleware(SupabaseAuthMiddleware, settings=settings)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    """Convert unhandled exceptions into JSON responses.
+
+    This runs inside FastAPI's exception middleware, so the resulting
+    response is still wrapped by CORSMiddleware on the way out. Without
+    this handler, Starlette's outermost ServerErrorMiddleware would build
+    the 500 response above CORS, dropping ``Access-Control-Allow-Origin``
+    and surfacing as a CORS error in the browser instead of the real
+    server-side failure.
+    """
+    logger.exception(
+        "Unhandled exception while processing %s %s",
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
 app.include_router(auth_router)
 app.include_router(campaigns_router)
 app.include_router(dashboard_router)

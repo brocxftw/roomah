@@ -79,6 +79,10 @@ class FakeQuery:
         self.filters.append(("lte", column, value))
         return self
 
+    def contains(self, column: str, value: Any) -> FakeQuery:
+        self.filters.append(("contains", column, value))
+        return self
+
     def lt(self, column: str, value: Any) -> FakeQuery:
         self.filters.append(("lt", column, value))
         return self
@@ -208,6 +212,10 @@ class FakeQuery:
             return str(actual) <= str(value)
         if operator == "lt":
             return str(actual) < str(value)
+        if operator == "contains":
+            if not isinstance(actual, dict) or not isinstance(value, dict):
+                return False
+            return all(actual.get(key) == expected for key, expected in value.items())
         raise AssertionError(f"Unsupported operator: {operator}")
 
     @staticmethod
@@ -254,6 +262,22 @@ class FakeRpc:
         return FakeResponse(None)
 
 
+class FakeStorageBucket:
+    def __init__(self, bucket_name: str) -> None:
+        self.bucket_name = bucket_name
+
+    def create_signed_url(self, storage_path: str, _expires_in: int) -> dict[str, str]:
+        return {"signedURL": f"signed://{self.bucket_name}/{storage_path}"}
+
+    def create_signed_upload_url(self, storage_path: str) -> dict[str, str]:
+        return {"signedURL": f"upload://{self.bucket_name}/{storage_path}"}
+
+
+class FakeStorage:
+    def from_(self, bucket_name: str) -> FakeStorageBucket:
+        return FakeStorageBucket(bucket_name)
+
+
 class FakeSupabase:
     def __init__(self) -> None:
         self.counters: dict[str, int] = {}
@@ -279,12 +303,14 @@ class FakeSupabase:
             ],
             "leads": [],
             "properties": [],
+            "property_images": [],
             "lead_properties": [],
             "viewings": [],
             "deals": [],
             "marketing_campaigns": [],
             "timeline_events": [],
         }
+        self.storage = FakeStorage()
 
     @staticmethod
     def user(user_id: str, email: str, role: str) -> dict[str, Any]:
@@ -833,6 +859,169 @@ def test_property_search_matches_owner_and_structured_address(monkeypatch) -> No
         "Skyline Residence"
     ]
     assert [property_row["name"] for property_row in state_matches] == ["Subang Rental"]
+
+
+def test_property_list_and_detail_include_cover_image_metadata(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    property_row = property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Gallery Condo",
+            type="Condominium",
+            **property_required_fields(),
+            listing_type=ListingType.SALE,
+            listing_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+    supabase.tables["property_images"].extend(
+        [
+            {
+                "id": str(uuid4()),
+                "property_id": property_row["id"],
+                "storage_path": "team/property/cover.jpg",
+                "is_cover": True,
+                "sort_order": 0,
+            },
+            {
+                "id": str(uuid4()),
+                "property_id": property_row["id"],
+                "storage_path": "team/property/gallery.jpg",
+                "is_cover": False,
+                "sort_order": 1,
+            },
+        ]
+    )
+
+    listed = property_routes.list_properties(auth=auth)
+    detail = property_routes.get_property(property_id=property_row["id"], auth=auth)
+
+    assert listed[0]["cover_image_url"] == (
+        "signed://property-images/team/property/cover.jpg"
+    )
+    assert listed[0]["image_count"] == 2
+    assert detail["cover_image_url"] == "signed://property-images/team/property/cover.jpg"
+
+
+def test_property_list_filters_created_range_and_manager_agent(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    ren_auth = auth_context(REN_ID, "REN")
+    manager_auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+    january_property = property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="January Condo",
+            type="Condominium",
+            **property_required_fields(city="Bangsar", postcode="59100"),
+            listing_type=ListingType.SALE,
+            listing_price=Decimal("500000"),
+        ),
+        auth=ren_auth,
+    )
+    february_property = property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="February Condo",
+            type="Condominium",
+            **property_required_fields(city="Subang Jaya", postcode="47500"),
+            listing_type=ListingType.SALE,
+            listing_price=Decimal("600000"),
+        ),
+        auth=manager_auth,
+    )
+    for row in supabase.tables["properties"]:
+        if row["id"] == january_property["id"]:
+            row["created_at"] = "2026-01-15T00:00:00+00:00"
+        if row["id"] == february_property["id"]:
+            row["created_at"] = "2026-02-15T00:00:00+00:00"
+
+    january_results = property_routes.list_properties(
+        created_from=datetime(2026, 1, 1, tzinfo=UTC),
+        created_to=datetime(2026, 1, 31, 23, 59, 59, tzinfo=UTC),
+        auth=ren_auth,
+    )
+    manager_agent_results = property_routes.list_properties(
+        ren_id=MANAGER_ID,
+        auth=manager_auth,
+    )
+    ren_scoped_results = property_routes.list_properties(
+        ren_id=MANAGER_ID,
+        auth=ren_auth,
+    )
+
+    assert [property_row["name"] for property_row in january_results] == [
+        "January Condo"
+    ]
+    assert [property_row["name"] for property_row in manager_agent_results] == [
+        "February Condo"
+    ]
+    assert [property_row["name"] for property_row in ren_scoped_results] == [
+        "January Condo"
+    ]
+
+
+def test_delete_property_cascades_children_when_no_active_deal(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, _viewing = create_lead_property_link_viewing(supabase, auth)
+    supabase.tables["property_images"].append(
+        {
+            "id": str(uuid4()),
+            "property_id": property_row["id"],
+            "storage_path": "team/property/cover.jpg",
+            "is_cover": True,
+            "sort_order": 0,
+        }
+    )
+    supabase.tables["timeline_events"].append(
+        {
+            "id": str(uuid4()),
+            "team_id": TEAM_ID,
+            "lead_id": lead["id"],
+            "event_type": "property_updated",
+            "source": "system",
+            "payload": {"property_id": property_row["id"]},
+        }
+    )
+
+    assert property_routes.delete_property(
+        property_id=property_row["id"],
+        auth=auth,
+    ) is None
+
+    assert supabase.tables["properties"] == []
+    assert supabase.tables["property_images"] == []
+    assert supabase.tables["lead_properties"] == []
+    assert not any(
+        event.get("payload", {}).get("property_id") == property_row["id"]
+        for event in supabase.tables["timeline_events"]
+    )
+
+
+def test_delete_property_rejects_active_deal_and_non_owner_ren(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    other_auth = auth_context(OTHER_REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, _viewing = create_lead_property_link_viewing(supabase, auth)
+    deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    with pytest.raises(HTTPException) as deal_exc:
+        property_routes.delete_property(property_id=property_row["id"], auth=auth)
+
+    with pytest.raises(HTTPException) as owner_exc:
+        property_routes.delete_property(property_id=property_row["id"], auth=other_auth)
+
+    assert deal_exc.value.status_code == 409
+    assert owner_exc.value.status_code == 404
 
 
 def test_linking_mismatched_listing_type_returns_warning(monkeypatch) -> None:

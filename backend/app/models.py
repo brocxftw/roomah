@@ -125,6 +125,9 @@ class Lead(RoomahModel):
     budget_min: Decimal | None = Field(default=None, ge=0)
     budget_max: Decimal | None = Field(default=None, ge=0)
     preferred_location: str | None = None
+    preferred_state: str | None = None
+    preferred_city: str | None = None
+    preferred_areas: list[str] | None = None
     preferred_property_type: str | None = None
     campaign_id: UUID | None = None
     status: LeadStatus

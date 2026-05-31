@@ -46,8 +46,13 @@ class FakeQuery:
         self.insert_payload: dict[str, Any] | None = None
         self.update_payload: dict[str, Any] | None = None
         self.upsert_payload: dict[str, Any] | None = None
+        self.delete_requested: bool = False
 
-    def select(self, _columns: str) -> FakeQuery:
+    def select(self, _columns: str, **_kwargs: Any) -> FakeQuery:
+        return self
+
+    def delete(self) -> FakeQuery:
+        self.delete_requested = True
         return self
 
     def eq(self, column: str, value: Any) -> FakeQuery:
@@ -111,11 +116,36 @@ class FakeQuery:
             return self._execute_upsert(self.upsert_payload)
         if self.update_payload is not None:
             return self._execute_update(self.update_payload)
+        if self.delete_requested:
+            return self._execute_delete()
 
         rows = self._filtered_rows()
         if self.single_result:
             return FakeResponse(rows[0].copy() if rows else None)
         return FakeResponse([row.copy() for row in rows])
+
+    def _execute_delete(self) -> FakeResponse:
+        rows_to_delete = self._filtered_rows()
+        ids_to_delete = {id(row) for row in rows_to_delete}
+        deleted = [row.copy() for row in rows_to_delete]
+        self.supabase.tables[self.table_name] = [
+            row
+            for row in self.supabase.tables[self.table_name]
+            if id(row) not in ids_to_delete
+        ]
+        if self.table_name == "leads":
+            for child_table in (
+                "lead_properties",
+                "viewings",
+                "timeline_events",
+            ):
+                lead_ids = {row["id"] for row in deleted}
+                self.supabase.tables[child_table] = [
+                    row
+                    for row in self.supabase.tables[child_table]
+                    if row.get("lead_id") not in lead_ids
+                ]
+        return FakeResponse(deleted)
 
     def _execute_insert(self, payload: dict[str, Any]) -> FakeResponse:
         row = payload.copy()
@@ -836,6 +866,105 @@ def test_linking_mismatched_listing_type_returns_warning(monkeypatch) -> None:
     )
 
     assert linked["warnings"]
+
+
+def test_lead_structured_location_fields_and_filters(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="KL Buyer",
+            phone="60123456789",
+            email="klbuyer@example.com",
+            preferred_location="Near KLCC or Mont Kiara",
+            preferred_state="Kuala Lumpur",
+            preferred_city="Mont Kiara",
+            preferred_areas=["Mont Kiara", "KLCC"],
+        ),
+        auth=auth,
+    )
+    lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Selangor Buyer",
+            phone="60987654321",
+            email="selangorbuyer@example.com",
+            preferred_location="Subang Jaya",
+            preferred_state="Selangor",
+            preferred_city="Subang Jaya",
+            preferred_areas=["Subang Jaya"],
+        ),
+        auth=auth,
+    )
+
+    kl_matches = lead_routes.list_leads(
+        preferred_state="Kuala Lumpur",
+        preferred_city="Mont Kiara",
+        auth=auth,
+    )
+    city_search_matches = lead_routes.list_leads(q="subang", auth=auth)
+
+    assert [lead["name"] for lead in kl_matches] == ["KL Buyer"]
+    assert kl_matches[0]["preferred_location"] == "Near KLCC or Mont Kiara"
+    assert kl_matches[0]["preferred_areas"] == ["Mont Kiara", "KLCC"]
+    assert [lead["name"] for lead in city_search_matches] == ["Selangor Buyer"]
+
+
+def test_delete_lead_removes_record_and_attribution(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    campaign = campaign_routes.create_campaign(
+        payload=campaign_routes.MarketingCampaignCreate(
+            name="Spring Push",
+            channel=CampaignChannel.GOOGLE,
+            campaign_start_date=datetime.now(UTC).date(),
+        ),
+        auth=auth,
+    )
+    supabase.table("marketing_campaigns").update({"status": "Active"}).eq(
+        "id",
+        campaign["id"],
+    ).execute()
+    lead = lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Buyer To Delete",
+            phone="60123456789",
+            email="delete@example.com",
+            campaign_id=campaign["id"],
+        ),
+        auth=auth,
+    )
+
+    assert (
+        supabase.tables["marketing_campaigns"][0]["leads_generated"] == 1
+    )
+
+    lead_routes.delete_lead(lead_id=lead["id"], auth=auth)
+
+    assert supabase.tables["leads"] == []
+    assert supabase.tables["marketing_campaigns"][0]["leads_generated"] == 0
+
+
+def test_delete_lead_with_deal_is_rejected(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, _viewing = create_lead_property_link_viewing(supabase, auth)
+    deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        lead_routes.delete_lead(lead_id=lead["id"], auth=auth)
+
+    assert excinfo.value.status_code == 409
+    assert supabase.tables["leads"], "Lead should not be deleted when a deal exists"
 
 
 def test_deactivated_ren_cannot_close_deal(monkeypatch) -> None:

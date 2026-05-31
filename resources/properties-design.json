@@ -1,0 +1,444 @@
+{
+    "design_system_name": "ROOMAH CRM - Property Management Workspace",
+  
+    "design_style": {
+      "category": "Modern SaaS CRM",
+      "subtype": "Property Operations Workspace",
+      "personality": [
+        "Professional",
+        "Premium",
+        "Organized",
+        "Data-driven",
+        "Real-estate focused",
+        "Operational"
+      ],
+      "visual_characteristics": [
+        "Clean enterprise interface",
+        "Card-based layout",
+        "Large visual previews",
+        "Master-detail workflow",
+        "Minimal shadows",
+        "Soft borders",
+        "High whitespace",
+        "Structured information hierarchy",
+        "Image-enhanced records"
+      ]
+    },
+  
+    "page_archetype": {
+      "type": "Property Management Master-Detail Workspace",
+      "purpose": "Allow agents to manage listings, review property information, and perform actions without leaving the page.",
+      "interaction_model": "Browse → Select Property → Review Details → Take Action"
+    },
+  
+    "layout": {
+      "type": "Three-Panel CRM Layout",
+  
+      "left_panel": {
+        "role": "Global Navigation",
+        "width": "240-260px",
+        "fixed": true
+      },
+  
+      "center_panel": {
+        "role": "Property Workspace",
+        "width": "fluid",
+        "priority": "highest"
+      },
+  
+      "right_panel": {
+        "role": "Property Detail Drawer",
+        "width": "340-380px",
+        "sticky": true,
+        "fixed": true
+      }
+    },
+  
+    "color_system": {
+      "navigation": {
+        "background": "#0B1F3A",
+        "gradient": true,
+        "active_item": "#00D4FF",
+        "text": "#FFFFFF"
+      },
+  
+      "content": {
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "border": "#E5E7EB"
+      },
+  
+      "text": {
+        "primary": "#111827",
+        "secondary": "#6B7280",
+        "muted": "#9CA3AF"
+      },
+  
+      "status": {
+        "active": "success",
+        "pending": "warning",
+        "inactive": "neutral",
+        "rental": "info",
+        "sale": "success"
+      }
+    },
+  
+    "spacing_system": {
+      "base_unit": 8,
+      "card_padding": 20,
+      "section_gap": 20,
+      "page_padding": 24,
+      "border_radius": 12
+    },
+  
+    "typography": {
+      "font_family": "Inter",
+  
+      "hierarchy": {
+        "page_title": {
+          "size": "32px",
+          "weight": 700
+        },
+  
+        "section_title": {
+          "size": "18px",
+          "weight": 600
+        },
+  
+        "body": {
+          "size": "14px"
+        },
+  
+        "caption": {
+          "size": "12px"
+        }
+      }
+    },
+  
+    "page_structure": {
+      "header": {
+        "layout": "horizontal",
+  
+        "left": [
+          "page_title",
+          "page_description"
+        ],
+  
+        "right": [
+          "secondary_action",
+          "primary_action"
+        ]
+      },
+  
+      "content_flow": [
+        "property_summary_metrics",
+        "property_filters",
+        "property_table"
+      ]
+    },
+  
+    "summary_metrics": {
+      "purpose": "Portfolio overview",
+  
+      "layout": {
+        "type": "horizontal_grid",
+        "cards_per_row": 5
+      },
+  
+      "card_structure": {
+        "title": "top_left",
+        "metric": "large",
+        "trend": "bottom",
+        "icon": "right"
+      },
+  
+      "visual_priority": "medium"
+    },
+  
+    "filter_bar": {
+      "purpose": "Fast property discovery",
+  
+      "layout": {
+        "single_row": true,
+        "contained_card": true
+      },
+  
+      "components": [
+        "property_search",
+        "status_filter",
+        "property_type_filter",
+        "location_filter",
+        "agent_filter",
+        "advanced_filters",
+        "reset"
+      ]
+    },
+  
+    "property_table": {
+      "role": "Primary operational workspace",
+  
+      "layout": {
+        "full_width": true,
+        "paginated": true,
+        "selectable_rows": true
+      },
+  
+      "table_style": {
+        "sticky_header": true,
+        "hover_state": true,
+        "selected_state": true,
+        "minimal_borders": true
+      },
+  
+      "column_groups": {
+  
+        "selection": {
+          "checkbox": true
+        },
+  
+        "property_identity": {
+          "contains": [
+            "thumbnail",
+            "property_name",
+            "reference_code",
+            "secondary_location"
+          ]
+        },
+  
+        "classification": {
+          "contains": [
+            "property_type",
+            "location"
+          ]
+        },
+  
+        "listing": {
+          "contains": [
+            "listing_type",
+            "status"
+          ]
+        },
+  
+        "value": {
+          "contains": [
+            "primary_price",
+            "secondary_price_reference"
+          ]
+        },
+  
+        "ownership": {
+          "contains": [
+            "agent"
+          ]
+        },
+  
+        "timeline": {
+          "contains": [
+            "listing_date"
+          ]
+        },
+  
+        "actions": {
+          "overflow_menu": true
+        }
+      }
+    },
+  
+    "property_identity_pattern": {
+      "thumbnail": {
+        "shape": "rounded_rectangle",
+        "size": "medium"
+      },
+  
+      "layout": {
+        "image_left": true,
+        "text_right": true
+      },
+  
+      "hierarchy": [
+        "property_name",
+        "reference_id",
+        "secondary_metadata"
+      ]
+    },
+  
+    "status_badges": {
+      "style": "soft_filled",
+  
+      "shape": "pill",
+  
+      "usage": [
+        "property_status",
+        "listing_type",
+        "availability",
+        "workflow_stage"
+      ]
+    },
+  
+    "right_drawer": {
+      "role": "Property Detail Workspace",
+  
+      "structure": [
+  
+        "property_hero",
+        "tab_navigation",
+        "information_cards",
+        "action_footer"
+      ]
+    },
+  
+    "property_hero": {
+      "purpose": "Immediate property context",
+  
+      "layout": {
+        "image_first": true,
+        "summary_second": true
+      },
+  
+      "image": {
+        "large_preview": true,
+        "gallery_indicator": true,
+        "rounded_corners": true
+      },
+  
+      "summary": {
+        "contains": [
+          "property_name",
+          "reference_id",
+          "property_type",
+          "location",
+          "primary_price",
+          "secondary_price"
+        ]
+      }
+    },
+  
+    "drawer_tabs": {
+      "style": "underline_navigation",
+  
+      "tabs": [
+        "overview",
+        "details",
+        "images",
+        "timeline",
+        "activity"
+      ]
+    },
+  
+    "information_cards": {
+      "layout": "vertical_stack",
+  
+      "spacing": 16,
+  
+      "sections": [
+  
+        {
+          "name": "key_information",
+  
+          "layout": "two_column_key_value"
+        },
+  
+        {
+          "name": "pricing",
+  
+          "layout": "metric_cards"
+        },
+  
+        {
+          "name": "description",
+  
+          "layout": "content_block"
+        }
+      ]
+    },
+  
+    "pricing_card_pattern": {
+      "layout": "horizontal_metrics",
+  
+      "cards": {
+        "equal_width": true,
+        "compact": true
+      }
+    },
+  
+    "property_image_system": {
+      "importance": "high",
+  
+      "guidelines": [
+        "Always display image thumbnails in property lists.",
+        "Use a large hero image in the detail drawer.",
+        "Support image count indicators.",
+        "Images should improve recognition and scanning speed."
+      ]
+    },
+  
+    "action_footer": {
+      "position": "bottom_of_drawer",
+  
+      "layout": {
+        "horizontal": true,
+        "sticky": false
+      },
+  
+      "actions": [
+        "primary_action",
+        "secondary_action"
+      ]
+    },
+  
+    "component_patterns": {
+      "property_module": {
+  
+        "always_include": [
+          "summary_metrics",
+          "filter_bar",
+          "property_table",
+          "property_detail_drawer"
+        ],
+  
+        "never_include": [
+          "large_dashboard_charts",
+          "complex_analytics",
+          "separate_property_detail_page"
+        ]
+      }
+    },
+  
+    "interaction_rules": [
+      "Selecting a property updates the right drawer immediately.",
+      "Users should not leave the page to review property details.",
+      "Property images are a primary identification element.",
+      "Filters should remain visible above the table.",
+      "Status should always be represented by badges.",
+      "Property cards should prioritise price, status and location.",
+      "Actions should be accessible directly from the drawer.",
+      "The drawer should function as a mini property profile.",
+      "Maintain consistent spacing and card styling with all ROOMAH modules."
+    ],
+  
+    "responsive_behavior": {
+      "desktop": {
+        "three_panel_layout": true
+      },
+  
+      "tablet": {
+        "drawer_collapsible": true
+      },
+  
+      "mobile": {
+        "drawer_becomes_bottom_sheet": true,
+        "single_column_layout": true
+      }
+    },
+  
+    "cursor_generation_rules": [
+      "Use the same master-detail architecture as the Leads page.",
+      "Property thumbnails are mandatory in list views.",
+      "Use a visual-first detail drawer with a hero image.",
+      "Present property information as grouped information cards.",
+      "Avoid opening separate detail pages.",
+      "Keep actions inside the right drawer.",
+      "Maintain enterprise CRM consistency across all property workflows.",
+      "Optimise for fast browsing and property comparison."
+    ]
+  }

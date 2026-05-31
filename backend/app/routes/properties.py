@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -6,6 +7,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 from app.auth import AuthContext, get_auth_context
 from app.models import ListingType, PropertyStatus
@@ -197,6 +200,71 @@ def _property_query_for_user(auth: AuthContext, user: dict[str, Any]):
     return query
 
 
+def _signed_property_image_url(supabase: Any, storage_path: str | None) -> str | None:
+    if not storage_path:
+        return None
+
+    try:
+        signed_url = supabase.storage.from_("property-images").create_signed_url(
+            storage_path,
+            60 * 60,
+        )
+    except Exception:
+        # A stale or invalid storage_path (e.g. object deleted from the bucket)
+        # must not break the entire listing response. Fall back to no signed URL
+        # so the client can still render via stock images.
+        logger.warning(
+            "Failed to sign property image URL for storage_path=%s",
+            storage_path,
+            exc_info=True,
+        )
+        return None
+
+    if isinstance(signed_url, str):
+        return signed_url
+    if isinstance(signed_url, dict):
+        return (
+            signed_url.get("signedURL")
+            or signed_url.get("signed_url")
+            or signed_url.get("signedUrl")
+        )
+    return None
+
+
+def _property_image_summaries(
+    supabase: Any,
+    property_ids: set[str],
+) -> dict[str, dict[str, Any]]:
+    if not property_ids:
+        return {}
+
+    images = (
+        supabase.table("property_images")
+        .select("property_id,storage_path,is_cover")
+        .in_("property_id", sorted(property_ids))
+        .execute()
+        .data
+    )
+    summaries: dict[str, dict[str, Any]] = {
+        property_id: {"image_count": 0, "cover_image_url": None}
+        for property_id in property_ids
+    }
+    for image in images:
+        property_id = image["property_id"]
+        summary = summaries.setdefault(
+            property_id,
+            {"image_count": 0, "cover_image_url": None},
+        )
+        summary["image_count"] += 1
+        if image.get("is_cover"):
+            summary["cover_image_url"] = _signed_property_image_url(
+                supabase,
+                image.get("storage_path"),
+            )
+
+    return summaries
+
+
 def _get_accessible_property(
     *,
     property_id: UUID,
@@ -242,10 +310,15 @@ def list_properties(
     state: str | None = None,
     price_min: Decimal | None = None,
     price_max: Decimal | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    ren_id: UUID | None = None,
     auth: AuthContext = Depends(get_auth_context),
 ) -> list[dict[str, Any]]:
     user = get_current_user_record(auth)
     query = _property_query_for_user(auth, user).order("updated_at", desc=True)
+    if ren_id and user["role"] == "MANAGER":
+        query = query.eq("ren_id", str(ren_id))
     if q:
         query = query.or_(
             ",".join(
@@ -284,8 +357,17 @@ def list_properties(
         query = query.gte("price", str(price_min))
     if price_max is not None:
         query = query.lte("price", str(price_max))
+    if created_from is not None:
+        query = query.gte("created_at", created_from.isoformat())
+    if created_to is not None:
+        query = query.lte("created_at", created_to.isoformat())
 
+    supabase = get_service_supabase()
     properties = query.execute().data
+    image_summaries = _property_image_summaries(
+        supabase,
+        {property_row["id"] for property_row in properties},
+    )
     ren_refs = get_team_user_references(
         auth,
         {
@@ -295,7 +377,14 @@ def list_properties(
         },
     )
     return [
-        {**property_row, "ren": ren_refs.get(property_row["ren_id"])}
+        {
+            **property_row,
+            **image_summaries.get(
+                property_row["id"],
+                {"image_count": 0, "cover_image_url": None},
+            ),
+            "ren": ren_refs.get(property_row["ren_id"]),
+        }
         for property_row in properties
     ]
 
@@ -325,6 +414,17 @@ def get_property(
         **property_row,
         "ren": ren_refs.get(property_row["ren_id"]),
         "images": images.data,
+        "cover_image_url": _signed_property_image_url(
+            supabase,
+            next(
+                (
+                    image["storage_path"]
+                    for image in images.data
+                    if image.get("is_cover")
+                ),
+                None,
+            ),
+        ),
     }
 
 
@@ -480,3 +580,55 @@ def delete_property_image(
 
     supabase.table("property_images").delete().eq("id", str(image_id)).execute()
     return {"status": "deleted"}
+
+
+@router.delete("/{property_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_property(
+    property_id: UUID,
+    auth: AuthContext = Depends(get_auth_context),
+) -> None:
+    supabase = get_service_supabase()
+    user = get_current_user_record(auth)
+    _get_accessible_property(property_id=property_id, auth=auth, user=user)
+
+    active_deals = (
+        supabase.table("deals")
+        .select("id")
+        .eq("team_id", auth.team_id)
+        .eq("property_id", str(property_id))
+        .limit(1)
+        .execute()
+        .data
+    )
+    if active_deals:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Properties linked to active deals cannot be deleted.",
+        )
+
+    (
+        supabase.table("property_images")
+        .delete()
+        .eq("property_id", str(property_id))
+        .execute()
+    )
+    (
+        supabase.table("lead_properties")
+        .delete()
+        .eq("property_id", str(property_id))
+        .execute()
+    )
+    (
+        supabase.table("timeline_events")
+        .delete()
+        .eq("team_id", auth.team_id)
+        .contains("payload", {"property_id": str(property_id)})
+        .execute()
+    )
+    (
+        supabase.table("properties")
+        .delete()
+        .eq("id", str(property_id))
+        .eq("team_id", auth.team_id)
+        .execute()
+    )

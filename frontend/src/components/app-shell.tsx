@@ -106,8 +106,8 @@ const pageMeta: Record<
   },
   "/app/properties": {
     title: "Properties",
-    description: "Maintain listings and property availability.",
-    primaryAction: { label: "+ Add Property", href: "/app/properties/new" },
+    description:
+      "Manage listings, images, pricing, and operational actions from one workspace.",
   },
   "/app/campaigns": {
     title: "Campaigns",
@@ -164,6 +164,59 @@ function isNavActive(pathname: string, href: string) {
     return pathname === "/app";
   }
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+const PROPERTY_LISTING_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "Sale", label: "Sale" },
+  { value: "Rental", label: "Rental" },
+  { value: "Both", label: "Both" },
+];
+
+function PropertyListingMasterFilter() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentValue = searchParams.get("listing_type") ?? "";
+
+  function handleChange(value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (!value) {
+      params.delete("listing_type");
+    } else {
+      params.set("listing_type", value);
+    }
+    const query = params.size ? `?${params.toString()}` : "";
+    router.replace(`${pathname}${query}`);
+  }
+
+  return (
+    <div
+      role="group"
+      aria-label="Filter properties by listing type"
+      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+    >
+      {PROPERTY_LISTING_FILTER_OPTIONS.map((option) => {
+        const active = currentValue === option.value;
+        return (
+          <button
+            key={option.value || "all"}
+            type="button"
+            aria-pressed={active}
+            onClick={() => handleChange(option.value)}
+            className={[
+              "min-h-9 rounded-md px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              active
+                ? "bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
+                : "text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100",
+            ].join(" ")}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function AppNavLinks({
@@ -537,6 +590,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <option value="quarter">This Quarter</option>
                   </select>
                 </label>
+              ) : pathname === "/app/properties" ? (
+                <PropertyListingMasterFilter />
               ) : undefined
             }
           />

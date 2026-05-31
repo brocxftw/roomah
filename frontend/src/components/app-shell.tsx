@@ -12,13 +12,13 @@ import {
   Menu,
   Moon,
   Plus,
-  Search,
   Settings,
   Sun,
   UserCircle2,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { GlobalSearch } from "@/components/layout/global-search";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
 
@@ -133,8 +133,8 @@ function getPageMeta(pathname: string) {
   const entries = Object.entries(pageMeta).sort(
     ([a], [b]) => b.length - a.length
   );
-  const matched = entries.find(([key]) =>
-    pathname === key || pathname.startsWith(`${key}/`)
+  const matched = entries.find(
+    ([key]) => pathname === key || pathname.startsWith(`${key}/`)
   );
   if (!matched) {
     return {
@@ -166,37 +166,37 @@ function AppNavLinks({
   return (
     <nav className="space-y-1">
       {getVisiblePrimaryNav(canSeeManager ? "MANAGER" : null).map((item) => {
-          const active = isNavActive(pathname, item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
+        const active = isNavActive(pathname, item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={[
+              "group flex min-h-12 items-center gap-3 rounded-md px-3 text-[17px] font-medium transition",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              active
+                ? "bg-slate-800 text-white"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white",
+              compact ? "justify-center px-2" : "",
+            ].join(" ")}
+            title={compact ? item.label : undefined}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.iconUrl}
+              alt=""
+              aria-hidden
               className={[
-                "group flex min-h-12 items-center gap-3 rounded-md px-3 text-[17px] font-medium transition",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                active
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white",
-                compact ? "justify-center px-2" : "",
+                "h-[25px] w-[25px] shrink-0 brightness-0 invert",
+                active ? "opacity-100" : "opacity-80",
               ].join(" ")}
-              title={compact ? item.label : undefined}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.iconUrl}
-                alt=""
-                aria-hidden
-                className={[
-                  "h-[25px] w-[25px] shrink-0 brightness-0 invert",
-                  active ? "opacity-100" : "opacity-80",
-                ].join(" ")}
-                loading="lazy"
-              />
-              {!compact ? <span className="truncate">{item.label}</span> : null}
-            </Link>
-          );
-        })}
+              loading="lazy"
+            />
+            {!compact ? <span className="truncate">{item.label}</span> : null}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
@@ -209,7 +209,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -256,12 +255,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandPaletteOpen((current) => !current);
-      }
       if (event.key === "Escape") {
-        setCommandPaletteOpen(false);
         setMobileSidebarOpen(false);
       }
     }
@@ -359,7 +353,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ].join(" ")}
           >
             <Settings className="size-5 shrink-0" aria-hidden />
-            {!sidebarCompact ? <span className="truncate">Settings</span> : null}
+            {!sidebarCompact ? (
+              <span className="truncate">Settings</span>
+            ) : null}
           </Link>
           <button
             type="button"
@@ -375,7 +371,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Moon className="size-5 shrink-0" aria-hidden />
             )}
             {!sidebarCompact ? (
-              <span className="truncate">{isDarkMode ? "Light mode" : "Dark mode"}</span>
+              <span className="truncate">
+                {isDarkMode ? "Light mode" : "Dark mode"}
+              </span>
             ) : null}
           </button>
         </div>
@@ -399,19 +397,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Menu className="size-5" aria-hidden />
               </button>
 
-              <button
-                type="button"
-                className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 text-left text-sm text-slate-500 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                onClick={() => setCommandPaletteOpen(true)}
-              >
-                <Search className="size-4 shrink-0" aria-hidden />
-                <span className="truncate">
-                  Search leads, properties, locations...
-                </span>
-                <span className="ml-auto hidden rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-300 sm:inline-flex">
-                  Ctrl + K
-                </span>
-              </button>
+              <GlobalSearch />
 
               <button
                 type="button"
@@ -477,7 +463,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {currentUser ? (
                     <div className="mb-2 border-b border-slate-100 px-2 pb-2 text-sm dark:border-slate-700">
                       <p className="font-medium">{currentUser.full_name}</p>
-                      <p className="text-xs text-slate-500">{currentUser.email}</p>
+                      <p className="text-xs text-slate-500">
+                        {currentUser.email}
+                      </p>
                     </div>
                   ) : null}
                   <Link
@@ -509,7 +497,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 : shellMeta.title
             }
             description={
-              shellMeta.variant === "greeting" ? todayLabel : shellMeta.description
+              shellMeta.variant === "greeting"
+                ? todayLabel
+                : shellMeta.description
             }
             primaryAction={shellMeta.primaryAction}
             secondaryAction={shellMeta.secondaryAction}
@@ -522,7 +512,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                   <select
                     value={dashboardRange}
-                    onChange={(event) => updateDashboardRange(event.target.value)}
+                    onChange={(event) =>
+                      updateDashboardRange(event.target.value)
+                    }
                     className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   >
                     <option value="today">Today</option>
@@ -567,41 +559,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               canSeeManager={canSeeManager}
               onNavigate={() => setMobileSidebarOpen(false)}
             />
-          </div>
-        </div>
-      ) : null}
-
-      {commandPaletteOpen ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-20">
-          <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 dark:border-slate-700">
-              <Search className="size-4 text-slate-500" aria-hidden />
-              <input
-                autoFocus
-                placeholder="Search leads, properties, locations..."
-                className="h-11 w-full bg-transparent text-sm outline-none"
-              />
-            </div>
-            <div className="mt-3 grid gap-1 text-sm">
-              <Link
-                href="/app/leads"
-                className="rounded-lg px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Go to Leads
-              </Link>
-              <Link
-                href="/app/properties"
-                className="rounded-lg px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Go to Properties
-              </Link>
-              <Link
-                href="/app/campaigns"
-                className="rounded-lg px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Go to Campaigns
-              </Link>
-            </div>
           </div>
         </div>
       ) : null}

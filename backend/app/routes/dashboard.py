@@ -144,10 +144,17 @@ def get_dashboard(
     active_leads = (
         lead_query("id")
         .in_("status", IN_FLIGHT_LEAD_STATUSES)
+        .gte("created_at", range_start.isoformat())
         .execute()
         .data
     )
-    funnel_leads = lead_query("id,status").in_("status", PIPELINE_STAGES).execute().data
+    funnel_leads = (
+        lead_query("id,status,created_at")
+        .in_("status", PIPELINE_STAGES)
+        .gte("created_at", range_start.isoformat())
+        .execute()
+        .data
+    )
     funnel_counts = {stage: 0 for stage in PIPELINE_STAGES}
     funnel_values = {stage: Decimal("0") for stage in PIPELINE_STAGES}
     for funnel_lead in funnel_leads:
@@ -232,7 +239,12 @@ def get_dashboard(
         if conversion_denominator < 5
         else funnel_counts[LeadStatus.WON.value] / conversion_denominator
     )
-    properties_listed = property_query().eq("status", "Active").execute().data
+    properties_listed = (
+        property_query("id")
+        .gte("created_at", range_start.isoformat())
+        .execute()
+        .data
+    )
     monthly_deals = (
         deal_query()
         .gte("closed_at", month_start.isoformat())
@@ -403,8 +415,8 @@ def get_dashboard(
         "kpis": {
             "active_leads": len(active_leads),
             "properties_listed": len(properties_listed),
-            "deals_closed": len(monthly_deals),
-            "monthly_commission": str(monthly_commission),
+            "deals_closed": len(range_deals),
+            "monthly_commission": str(range_commission),
             "follow_ups_due": len(follow_ups_due),
             "campaign_conversion_rate_month": campaign_conversion_rate_month,
             "top_performing_campaign_month": top_performing_campaign,

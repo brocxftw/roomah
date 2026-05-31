@@ -45,6 +45,30 @@ const taskToneStyles: Record<Tone, string> = {
   slate: "bg-slate-100 text-slate-700",
 };
 
+const dateRangeLabels: Record<string, string> = {
+  today: "Today",
+  week: "This week",
+  month: "This month",
+  quarter: "This quarter",
+};
+
+function formatRangeLabel(dateRange?: string | null) {
+  if (!dateRange) return "This month";
+  return dateRangeLabels[dateRange] ?? "Selected range";
+}
+
+const commissionFormatter = new Intl.NumberFormat("en-MY", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatCommission(amount: string | number) {
+  const numeric =
+    typeof amount === "number" ? amount : Number.parseFloat(String(amount));
+  if (!Number.isFinite(numeric)) return "0.00";
+  return commissionFormatter.format(numeric);
+}
+
 export function KpiStrip({
   activeLeads,
   propertiesListed,
@@ -52,6 +76,7 @@ export function KpiStrip({
   monthlyCommission,
   followUpsDue,
   targetProgressPercent,
+  dateRange,
 }: {
   activeLeads: number;
   propertiesListed: number;
@@ -59,35 +84,37 @@ export function KpiStrip({
   monthlyCommission: string;
   followUpsDue: number;
   targetProgressPercent?: number | null;
+  dateRange?: string | null;
 }) {
+  const rangeLabel = formatRangeLabel(dateRange);
   const cards: KpiCard[] = [
     {
       label: "Active Leads",
       value: activeLeads,
-      helper: "In-flight customer conversations",
+      helper: `Acquired ${rangeLabel.toLowerCase()}`,
       icon: Users,
       accent: "blue",
     },
     {
       label: "Properties Listed",
       value: propertiesListed,
-      helper: "Active inventory",
+      helper: `Listed ${rangeLabel.toLowerCase()}`,
       icon: Home,
       accent: "slate",
     },
     {
       label: "Deals Closed",
       value: dealsClosed,
-      helper: "This month",
+      helper: rangeLabel,
       icon: CheckCircle2,
       accent: "emerald",
     },
     {
-      label: "Monthly Commission",
-      value: `RM ${monthlyCommission}`,
+      label: "Commission",
+      value: `RM ${formatCommission(monthlyCommission)}`,
       helper:
         targetProgressPercent === null || targetProgressPercent === undefined
-          ? "This month"
+          ? rangeLabel
           : `${targetProgressPercent}% of target`,
       icon: Wallet,
       accent: "emerald",
@@ -95,7 +122,7 @@ export function KpiStrip({
     {
       label: "Follow-ups Due",
       value: followUpsDue,
-      helper: "Needs attention now",
+      helper: "As of now",
       icon: Flame,
       accent: followUpsDue > 0 ? "red" : "slate",
     },

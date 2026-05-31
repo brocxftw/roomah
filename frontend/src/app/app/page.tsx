@@ -120,11 +120,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
-        <TodayTasksWidget counts={dashboard.priority_counts} />
-        <QuickActions />
-      </section>
-
       <KpiStrip
         activeLeads={dashboard.kpis.active_leads}
         propertiesListed={dashboard.kpis.properties_listed}
@@ -132,7 +127,13 @@ export default function DashboardPage() {
         monthlyCommission={dashboard.kpis.monthly_commission}
         followUpsDue={dashboard.kpis.follow_ups_due}
         targetProgressPercent={targetProgressPercent}
+        dateRange={dashboard.target_progress.date_range}
       />
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <TodayTasksWidget counts={dashboard.priority_counts} />
+        <QuickActions />
+      </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
         <TodayAgenda items={dashboard.today_agenda} />

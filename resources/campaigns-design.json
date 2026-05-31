@@ -1,0 +1,452 @@
+{
+    "design_system_name": "ROOMAH CRM - Campaign Management Workspace",
+  
+    "design_style": {
+      "category": "Modern SaaS CRM",
+      "subtype": "Marketing Operations Workspace",
+      "personality": [
+        "Professional",
+        "Analytical",
+        "Performance-focused",
+        "Operational",
+        "Clean",
+        "Executive-friendly"
+      ],
+      "visual_characteristics": [
+        "Enterprise SaaS dashboard",
+        "Card-based information architecture",
+        "Master-detail layout",
+        "Performance-oriented metrics",
+        "Minimal shadows",
+        "Soft borders",
+        "High readability",
+        "Compact data density",
+        "Clear metric hierarchy"
+      ]
+    },
+  
+    "page_archetype": {
+      "type": "Campaign Management Master-Detail Workspace",
+      "purpose": "Allow users to monitor campaign performance, analyse results, and manage campaigns without leaving the page.",
+      "interaction_model": "Browse Campaigns → Select Campaign → Review Performance → Take Action"
+    },
+  
+    "layout": {
+      "type": "Three-Panel CRM Workspace",
+  
+      "left_panel": {
+        "role": "Global Navigation",
+        "width": "240-260px",
+        "fixed": true
+      },
+  
+      "center_panel": {
+        "role": "Campaign Workspace",
+        "width": "fluid",
+        "priority": "highest"
+      },
+  
+      "right_panel": {
+        "role": "Campaign Insight Drawer",
+        "width": "340-380px",
+        "sticky": true,
+        "fixed": true
+      }
+    },
+  
+    "design_philosophy": {
+      "primary_goal": "Enable campaign performance analysis and management from a single operational workspace.",
+  
+      "ux_principles": [
+        "Performance metrics should be immediately visible.",
+        "Campaign selection should update contextual insights instantly.",
+        "Analytics should support actions, not dominate the interface.",
+        "Users should move from insight to action with minimal clicks.",
+        "Campaign management should feel operational, not report-centric."
+      ]
+    },
+  
+    "color_system": {
+      "navigation": {
+        "background": "#0B1F3A",
+        "gradient": true,
+        "active_item": "#00D4FF",
+        "text": "#FFFFFF"
+      },
+  
+      "content": {
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "border": "#E5E7EB"
+      },
+  
+      "text": {
+        "primary": "#111827",
+        "secondary": "#6B7280",
+        "muted": "#9CA3AF"
+      },
+  
+      "status": {
+        "active": "success",
+        "completed": "info",
+        "paused": "warning",
+        "scheduled": "neutral",
+        "archived": "danger"
+      }
+    },
+  
+    "spacing_system": {
+      "base_unit": 8,
+      "page_padding": 24,
+      "section_gap": 20,
+      "card_padding": 20,
+      "border_radius": 12
+    },
+  
+    "typography": {
+      "font_family": "Inter",
+  
+      "hierarchy": {
+        "page_title": {
+          "size": "32px",
+          "weight": 700
+        },
+  
+        "section_title": {
+          "size": "18px",
+          "weight": 600
+        },
+  
+        "metric": {
+          "size": "28px",
+          "weight": 700
+        },
+  
+        "body": {
+          "size": "14px"
+        },
+  
+        "caption": {
+          "size": "12px"
+        }
+      }
+    },
+  
+    "page_structure": {
+      "header": {
+        "layout": "horizontal",
+  
+        "left": [
+          "page_title",
+          "page_description"
+        ],
+  
+        "right": [
+          "secondary_action",
+          "primary_action"
+        ]
+      },
+  
+      "content_flow": [
+        "campaign_summary_metrics",
+        "campaign_filter_bar",
+        "campaign_table"
+      ]
+    },
+  
+    "summary_metrics": {
+      "purpose": "Campaign portfolio performance overview",
+  
+      "layout": {
+        "type": "horizontal_metric_grid",
+        "cards_per_row": 6
+      },
+  
+      "card_structure": {
+        "title": "top_left",
+        "metric": "primary_focus",
+        "trend": "bottom",
+        "icon": "right"
+      },
+  
+      "guidelines": [
+        "Display campaign-level operational KPIs.",
+        "Use equal card widths.",
+        "Keep cards concise and scan-friendly.",
+        "Avoid charts inside KPI cards."
+      ]
+    },
+  
+    "filter_bar": {
+      "purpose": "Campaign discovery and segmentation",
+  
+      "layout": {
+        "single_row": true,
+        "contained_inside_card": true
+      },
+  
+      "components": [
+        "campaign_search",
+        "status_filter",
+        "channel_filter",
+        "campaign_type_filter",
+        "date_range_filter",
+        "advanced_filters",
+        "reset_filters"
+      ]
+    },
+  
+    "campaign_table": {
+      "role": "Primary campaign workspace",
+  
+      "style": {
+        "sticky_header": true,
+        "hover_state": true,
+        "selected_row": true,
+        "minimal_borders": true
+      },
+  
+      "layout": {
+        "full_width": true,
+        "pagination": true,
+        "row_selection": true
+      },
+  
+      "column_groups": {
+  
+        "selection": {
+          "checkbox": true
+        },
+  
+        "campaign_identity": {
+          "contains": [
+            "platform_icon",
+            "campaign_name",
+            "secondary_metadata"
+          ]
+        },
+  
+        "classification": {
+          "contains": [
+            "channel",
+            "campaign_type"
+          ]
+        },
+  
+        "status": {
+          "badge": true
+        },
+  
+        "timeline": {
+          "contains": [
+            "campaign_period"
+          ]
+        },
+  
+        "performance": {
+          "contains": [
+            "spend",
+            "leads",
+            "conversions",
+            "cost_metrics"
+          ]
+        },
+  
+        "actions": {
+          "overflow_menu": true
+        }
+      }
+    },
+  
+    "campaign_identity_pattern": {
+      "layout": {
+        "icon_left": true,
+        "content_right": true
+      },
+  
+      "hierarchy": [
+        "campaign_name",
+        "secondary_description"
+      ]
+    },
+  
+    "status_badges": {
+      "style": "soft_filled",
+      "shape": "pill",
+  
+      "usage": [
+        "campaign_status",
+        "campaign_type",
+        "performance_label"
+      ]
+    },
+  
+    "right_drawer": {
+      "role": "Campaign Insight Workspace",
+  
+      "structure": [
+        "campaign_summary",
+        "tab_navigation",
+        "performance_cards",
+        "insight_modules",
+        "quick_actions"
+      ]
+    },
+  
+    "campaign_summary": {
+      "purpose": "Immediate campaign context",
+  
+      "layout": {
+        "compact_profile_header": true
+      },
+  
+      "contains": [
+        "platform_icon",
+        "campaign_name",
+        "status",
+        "campaign_identifier",
+        "date_range",
+        "audience",
+        "location",
+        "campaign_type"
+      ]
+    },
+  
+    "drawer_tabs": {
+      "style": "underline_navigation",
+  
+      "tabs": [
+        "overview",
+        "performance",
+        "leads",
+        "timeline"
+      ]
+    },
+  
+    "performance_cards": {
+      "purpose": "Detailed campaign analytics",
+  
+      "layout": {
+        "grid": true,
+        "two_columns": true
+      },
+  
+      "card_style": {
+        "compact": true,
+        "equal_height": true
+      },
+  
+      "metrics": [
+        "spend",
+        "reach",
+        "engagement",
+        "lead_generation",
+        "conversion",
+        "efficiency"
+      ]
+    },
+  
+    "insight_modules": {
+      "layout": "vertical_stack",
+  
+      "spacing": 16,
+  
+      "components": [
+  
+        {
+          "type": "top_performer_card",
+          "purpose": "Highlight best-performing asset"
+        },
+  
+        {
+          "type": "recommendation_card",
+          "purpose": "Display actionable insight"
+        }
+      ]
+    },
+  
+    "analytics_design_rules": [
+      "Use metrics instead of charts whenever possible.",
+      "Prioritise decision-making over visualisation.",
+      "Show actionable KPIs first.",
+      "Keep analytics concise and operational.",
+      "Avoid overwhelming users with reporting complexity."
+    ],
+  
+    "quick_actions": {
+      "position": "bottom_of_drawer",
+  
+      "layout": {
+        "grid": true
+      },
+  
+      "actions": [
+        "edit_campaign",
+        "view_related_leads",
+        "pause_campaign",
+        "duplicate_campaign"
+      ]
+    },
+  
+    "cards": {
+      "background": "#FFFFFF",
+      "border": "1px solid #E5E7EB",
+      "radius": "12px",
+      "shadow": "minimal",
+      "padding": "20px"
+    },
+  
+    "component_patterns": {
+      "campaign_module": {
+  
+        "always_include": [
+          "performance_summary_cards",
+          "filter_bar",
+          "campaign_table",
+          "campaign_drawer"
+        ],
+  
+        "avoid": [
+          "full_screen_reports",
+          "separate_campaign_detail_pages",
+          "large_dashboard_charts"
+        ]
+      }
+    },
+  
+    "interaction_rules": [
+      "Selecting a campaign updates the right drawer instantly.",
+      "Campaign performance should be accessible without page navigation.",
+      "Metrics should remain visible and easy to compare.",
+      "The right drawer acts as a campaign command centre.",
+      "Use platform icons as campaign identifiers.",
+      "Actions should remain accessible from the drawer.",
+      "Preserve consistency with Leads and Properties modules."
+    ],
+  
+    "responsive_behavior": {
+      "desktop": {
+        "three_panel_layout": true
+      },
+  
+      "tablet": {
+        "drawer_collapsible": true
+      },
+  
+      "mobile": {
+        "drawer_becomes_bottom_sheet": true,
+        "single_column_layout": true
+      }
+    },
+  
+    "cursor_generation_rules": [
+      "Follow the same master-detail architecture used across ROOMAH.",
+      "Campaign rows should prioritise performance metrics.",
+      "Use platform branding only as an identifier, never as a dominant design element.",
+      "Present campaign insights inside the right drawer.",
+      "Avoid navigating users to separate reporting pages.",
+      "Keep performance analysis actionable and operational.",
+      "Maintain consistent card styling, spacing, badges, and hierarchy across all CRM modules.",
+      "Design for fast campaign monitoring and optimisation workflows."
+    ]
+  }

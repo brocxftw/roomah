@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -18,6 +18,7 @@ from app.models import (
     TimelineEventType,
 )
 from app.routes import campaigns as campaign_routes
+from app.routes import campaign_content_templates as template_routes
 from app.routes import dashboard as dashboard_routes
 from app.routes import deals as deal_routes
 from app.routes import leads as lead_routes
@@ -308,6 +309,7 @@ class FakeSupabase:
             "viewings": [],
             "deals": [],
             "marketing_campaigns": [],
+            "campaign_content_templates": [],
             "timeline_events": [],
         }
         self.storage = FakeStorage()
@@ -366,6 +368,7 @@ def property_required_fields(**overrides: Any) -> dict[str, Any]:
 def patch_supabase(monkeypatch: pytest.MonkeyPatch, supabase: FakeSupabase) -> None:
     modules = [
         campaign_routes,
+        template_routes,
         dashboard_routes,
         lead_routes,
         manager_routes,
@@ -590,6 +593,207 @@ def test_campaign_attribution_counters_and_deal_conversion(monkeypatch) -> None:
         and event["lead_id"] == lead["id"]
         for event in supabase.tables["timeline_events"]
     )
+
+
+def test_campaign_external_url_create_update_list_and_detail(monkeypatch) -> None:
+    # Integration-style route test: exercises model validation, route payloads,
+    # and fake Supabase persistence together without mocking internal helpers.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    campaign = campaign_routes.create_campaign(
+        payload=campaign_routes.MarketingCampaignCreate(
+            name="Facebook Link Campaign",
+            channel=CampaignChannel.FACEBOOK,
+            campaign_start_date=datetime.now(UTC).date(),
+            external_url="https://www.facebook.com/roomah/posts/123",
+        ),
+        auth=auth,
+    )
+
+    assert campaign["external_url"] == "https://www.facebook.com/roomah/posts/123"
+
+    listed = campaign_routes.list_campaigns(include_draft=True, auth=auth)
+    detailed = campaign_routes.get_campaign(
+        campaign_id=UUID(campaign["id"]),
+        auth=auth,
+    )
+
+    assert listed[0]["external_url"] == "https://www.facebook.com/roomah/posts/123"
+    assert detailed["external_url"] == "https://www.facebook.com/roomah/posts/123"
+
+    updated = campaign_routes.update_campaign(
+        campaign_id=UUID(campaign["id"]),
+        payload=campaign_routes.MarketingCampaignUpdate(
+            external_url="https://www.threads.net/@roomah/post/456",
+        ),
+        auth=auth,
+    )
+
+    assert updated["external_url"] == "https://www.threads.net/@roomah/post/456"
+
+
+def test_campaign_external_url_must_be_https() -> None:
+    # Unit-level validation test: URL validation is a pure model concern.
+    with pytest.raises(ValueError, match="external_url must be an HTTPS URL"):
+        campaign_routes.MarketingCampaignCreate(
+            name="Invalid Link Campaign",
+            channel=CampaignChannel.FACEBOOK,
+            campaign_start_date=datetime.now(UTC).date(),
+            external_url="http://example.com/campaign",
+        )
+
+
+def test_campaign_content_templates_are_starter_plus_owner_only(monkeypatch) -> None:
+    # Integration-style route test: validates route-level authorization and
+    # filtering with starter visibility and private owner-only records.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    manager_auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+    supabase.tables["campaign_content_templates"].extend(
+        [
+            {
+                "id": str(uuid4()),
+                "team_id": None,
+                "name": "Starter Caption",
+                "channel": "Instagram",
+                "format": "Caption",
+                "body": "Promote {{property_name}} today.",
+                "placeholders": ["property_name"],
+                "is_starter": True,
+                "created_by": None,
+                "created_at": datetime.now(UTC).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
+            {
+                "id": str(uuid4()),
+                "team_id": TEAM_ID,
+                "name": "Owner WhatsApp",
+                "channel": "WhatsApp",
+                "format": "WhatsApp",
+                "body": "Hi, want to view {{property_name}}?",
+                "placeholders": ["property_name"],
+                "is_starter": False,
+                "created_by": REN_ID,
+                "created_at": datetime.now(UTC).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
+            {
+                "id": str(uuid4()),
+                "team_id": TEAM_ID,
+                "name": "Other User Ad",
+                "channel": "Facebook",
+                "format": "Ad Copy",
+                "body": "Limited launch.",
+                "placeholders": [],
+                "is_starter": False,
+                "created_by": OTHER_REN_ID,
+                "created_at": datetime.now(UTC).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
+        ]
+    )
+
+    ren_templates = template_routes.list_templates(auth=auth)
+    manager_templates = template_routes.list_templates(auth=manager_auth)
+
+    assert [template["name"] for template in ren_templates] == [
+        "Starter Caption",
+        "Owner WhatsApp",
+    ]
+    assert [template["name"] for template in manager_templates] == [
+        "Starter Caption",
+    ]
+
+
+def test_campaign_content_template_crud_and_starter_rejections(monkeypatch) -> None:
+    # Integration-style route test: exercises create/read/update/delete and
+    # confirms starter templates cannot be modified.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    created = template_routes.create_template(
+        payload=template_routes.CampaignContentTemplateCreate(
+            name="Private Caption",
+            channel="Instagram",
+            format="Caption",
+            body="New listing at {{location}}.",
+            placeholders=["location"],
+        ),
+        auth=auth,
+    )
+    assert created["created_by"] == REN_ID
+    assert created["is_starter"] is False
+
+    updated = template_routes.update_template(
+        template_id=UUID(created["id"]),
+        payload=template_routes.CampaignContentTemplateUpdate(
+            name="Updated Caption",
+            body="Updated copy for {{property_name}}.",
+            placeholders=["property_name"],
+        ),
+        auth=auth,
+    )
+    assert updated["name"] == "Updated Caption"
+    assert updated["body"] == "Updated copy for {{property_name}}."
+
+    starter_id = str(uuid4())
+    supabase.tables["campaign_content_templates"].append(
+        {
+            "id": starter_id,
+            "team_id": None,
+            "name": "Starter Email",
+            "channel": "Email",
+            "format": "Email",
+            "body": "Subject: {{property_name}}",
+            "placeholders": ["property_name"],
+            "is_starter": True,
+            "created_by": None,
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    with pytest.raises(HTTPException) as exc:
+        template_routes.update_template(
+            template_id=UUID(starter_id),
+            payload=template_routes.CampaignContentTemplateUpdate(name="Nope"),
+            auth=auth,
+        )
+    assert exc.value.status_code == 403
+
+    template_routes.delete_template(template_id=UUID(created["id"]), auth=auth)
+    assert all(row["id"] != created["id"] for row in supabase.tables["campaign_content_templates"])
+
+
+def test_campaign_content_template_non_owner_is_denied(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    manager_auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+    private_id = str(uuid4())
+    supabase.tables["campaign_content_templates"].append(
+        {
+            "id": private_id,
+            "team_id": TEAM_ID,
+            "name": "Other User Template",
+            "channel": "TikTok",
+            "format": "Caption",
+            "body": "Private copy.",
+            "placeholders": [],
+            "is_starter": False,
+            "created_by": OTHER_REN_ID,
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+    for requester in (auth, manager_auth):
+        with pytest.raises(HTTPException) as exc:
+            template_routes.get_template(template_id=UUID(private_id), auth=requester)
+        assert exc.value.status_code == 404
 
 
 def test_lost_cascade_does_not_touch_other_lead_campaign_counters(
@@ -1097,6 +1301,56 @@ def test_lead_structured_location_fields_and_filters(monkeypatch) -> None:
     assert kl_matches[0]["preferred_location"] == "Near KLCC or Mont Kiara"
     assert kl_matches[0]["preferred_areas"] == ["Mont Kiara", "KLCC"]
     assert [lead["name"] for lead in city_search_matches] == ["Selangor Buyer"]
+
+
+def test_list_leads_filters_by_campaign(monkeypatch) -> None:
+    # Integration-style route test: verifies campaign filter behavior after
+    # attribution and enrichment, matching the Campaigns drawer "View Leads" flow.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    target_campaign = campaign_routes.create_campaign(
+        payload=campaign_routes.MarketingCampaignCreate(
+            name="Target Campaign",
+            channel=CampaignChannel.GOOGLE,
+            campaign_start_date=datetime.now(UTC).date(),
+        ),
+        auth=auth,
+    )
+    other_campaign = campaign_routes.create_campaign(
+        payload=campaign_routes.MarketingCampaignCreate(
+            name="Other Campaign",
+            channel=CampaignChannel.FACEBOOK,
+            campaign_start_date=datetime.now(UTC).date(),
+        ),
+        auth=auth,
+    )
+    for campaign in supabase.tables["marketing_campaigns"]:
+        campaign["status"] = "Active"
+
+    lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Target Campaign Lead",
+            phone="60123456789",
+            email="targetcampaign@example.com",
+            campaign_id=target_campaign["id"],
+        ),
+        auth=auth,
+    )
+    lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Other Campaign Lead",
+            phone="60987654321",
+            email="othercampaignfilter@example.com",
+            campaign_id=other_campaign["id"],
+        ),
+        auth=auth,
+    )
+
+    matches = lead_routes.list_leads(campaign=UUID(target_campaign["id"]), auth=auth)
+
+    assert [lead["name"] for lead in matches] == ["Target Campaign Lead"]
+    assert matches[0]["campaign_name"] == "Target Campaign"
 
 
 def test_delete_lead_removes_record_and_attribution(monkeypatch) -> None:

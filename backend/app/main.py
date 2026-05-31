@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.auth import SupabaseAuthMiddleware
 from app.core.config import get_settings
 from app.routes.auth import router as auth_router
+from app.routes.campaign_content_templates import router as campaign_templates_router
 from app.routes.campaigns import router as campaigns_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.deals import router as deals_router
@@ -77,6 +78,7 @@ async def unhandled_exception_handler(
 
 
 app.include_router(auth_router)
+app.include_router(campaign_templates_router)
 app.include_router(campaigns_router)
 app.include_router(dashboard_router)
 app.include_router(deals_router)

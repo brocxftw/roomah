@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
@@ -17,10 +18,28 @@ const campaignChannels = [
   "Other",
 ];
 
+type CampaignFormRecord = {
+  id: string;
+  name: string;
+  channel: string;
+  campaign_start_date: string;
+  campaign_end_date?: string | null;
+  budget?: string | number | null;
+  ad_spending?: string | number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  external_url?: string | null;
+};
+
 export default function NewCampaignPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getToken } = useAuth();
   const today = new Date().toISOString().slice(0, 10);
+  const editId = searchParams.get("edit");
+  const duplicateId = searchParams.get("duplicate");
+  const sourceId = editId ?? duplicateId;
+  const isEditMode = Boolean(editId);
   const [name, setName] = useState("");
   const [channel, setChannel] = useState(campaignChannels[0]);
   const [startDate, setStartDate] = useState(today);
@@ -29,8 +48,59 @@ export default function NewCampaignPage() {
   const [adSpending, setAdSpending] = useState("");
   const [impressions, setImpressions] = useState("");
   const [clicks, setClicks] = useState("");
+  const [externalUrl, setExternalUrl] = useState("");
+  const [loadingSource, setLoadingSource] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sourceId) return;
+
+    async function loadSourceCampaign() {
+      setLoadingSource(true);
+      setError(null);
+      try {
+        const token = await getToken();
+        const campaign = await apiFetch<CampaignFormRecord>(
+          `/campaigns/${sourceId}`,
+          token
+        );
+        setName(duplicateId ? `${campaign.name} Copy` : campaign.name);
+        setChannel(campaign.channel);
+        setStartDate(campaign.campaign_start_date);
+        setEndDate(campaign.campaign_end_date ?? "");
+        setBudget(campaign.budget ? String(campaign.budget) : "");
+        setExternalUrl(campaign.external_url ?? "");
+        if (editId) {
+          setAdSpending(
+            campaign.ad_spending !== null && campaign.ad_spending !== undefined
+              ? String(campaign.ad_spending)
+              : ""
+          );
+          setImpressions(
+            campaign.impressions !== null && campaign.impressions !== undefined
+              ? String(campaign.impressions)
+              : ""
+          );
+          setClicks(
+            campaign.clicks !== null && campaign.clicks !== undefined
+              ? String(campaign.clicks)
+              : ""
+          );
+        } else {
+          setAdSpending("");
+          setImpressions("");
+          setClicks("");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load campaign");
+      } finally {
+        setLoadingSource(false);
+      }
+    }
+
+    void loadSourceCampaign();
+  }, [duplicateId, editId, getToken, sourceId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,41 +108,71 @@ export default function NewCampaignPage() {
     setError(null);
     try {
       const token = await getToken();
-      await apiFetch("/campaigns", token, {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          channel,
-          campaign_start_date: startDate,
-          campaign_end_date: endDate || null,
-          budget: budget ? Number(budget) : null,
-          ad_spending: adSpending ? Number(adSpending) : 0,
-          impressions: impressions ? Number(impressions) : 0,
-          clicks: clicks ? Number(clicks) : 0,
-        }),
-      });
-      router.push("/app/campaigns");
+      const saved = await apiFetch<CampaignFormRecord>(
+        editId ? `/campaigns/${editId}` : "/campaigns",
+        token,
+        {
+          method: editId ? "PATCH" : "POST",
+          body: JSON.stringify({
+            name,
+            channel,
+            campaign_start_date: startDate,
+            campaign_end_date: endDate || null,
+            budget: budget ? Number(budget) : null,
+            ad_spending: adSpending ? Number(adSpending) : 0,
+            impressions: impressions ? Number(impressions) : 0,
+            clicks: clicks ? Number(clicks) : 0,
+            external_url: externalUrl || null,
+          }),
+        }
+      );
+      router.push(`/app/campaigns?campaign=${saved.id}`);
       router.refresh();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to create campaign"
+        err instanceof Error ? err.message : "Failed to save campaign"
       );
     } finally {
       setSaving(false);
     }
   }
 
+  function cancel() {
+    if (editId) {
+      router.push(`/app/campaigns?campaign=${editId}`);
+      return;
+    }
+    if (duplicateId) {
+      router.push(`/app/campaigns?campaign=${duplicateId}`);
+      return;
+    }
+    router.push("/app/campaigns");
+  }
+
+  const title = isEditMode
+    ? "Edit Campaign"
+    : duplicateId
+      ? "Duplicate Campaign"
+      : "Campaign Details";
+  const description = isEditMode
+    ? "Update campaign setup and external campaign link."
+    : duplicateId
+      ? "Create a draft copy. Generated metrics start from zero unless you enter new values."
+      : "Create a draft campaign that can be attributed to new and existing leads.";
+
   return (
     <form onSubmit={submit} className="space-y-6">
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h2 className="text-lg font-semibold tracking-tight">
-          Campaign Details
+          {title}
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Create a draft campaign that can be attributed to new and existing
-          leads.
+          {description}
         </p>
 
+        {loadingSource ? (
+          <p className="mt-4 text-sm text-slate-500">Loading campaign...</p>
+        ) : null}
         {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -129,7 +229,38 @@ export default function NewCampaignPage() {
               className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900"
             />
           </label>
+
+          <label className="space-y-2 text-sm md:col-span-2">
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              Campaign URL
+            </span>
+            <input
+              type="url"
+              value={externalUrl}
+              onChange={(event) => setExternalUrl(event.target.value)}
+              placeholder="https://www.facebook.com/..."
+              className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900"
+            />
+            <span className="block text-xs text-slate-500">
+              Optional. Paste the external campaign link to show a View on platform action.
+            </span>
+          </label>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Campaign Content
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Need copy for Facebook, Instagram, TikTok, WhatsApp, or email? Use a content template, copy the generated text, and paste it into the external platform.
+        </p>
+        <Link
+          href="/app/campaigns/templates"
+          className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+        >
+          Use a template
+        </Link>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -137,7 +268,9 @@ export default function NewCampaignPage() {
           Budget and Metrics
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Optional starting values. Campaign counters update as leads convert.
+          {duplicateId
+            ? "Metric fields are blank for draft copies so past performance is not carried over."
+            : "Optional starting values. Campaign counters update as leads convert."}
         </p>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -200,17 +333,23 @@ export default function NewCampaignPage() {
       <div className="flex justify-end gap-3">
         <button
           type="button"
-          onClick={() => router.push("/app/campaigns")}
+          onClick={cancel}
           className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
         >
           Cancel
         </button>
         <button
           type="submit"
-          disabled={saving || !name}
+          disabled={saving || loadingSource || !name}
           className="inline-flex min-h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
-          {saving ? "Creating..." : "Create Campaign"}
+          {saving
+            ? "Saving..."
+            : isEditMode
+              ? "Save Campaign"
+              : duplicateId
+                ? "Create Draft Copy"
+                : "Create Campaign"}
         </button>
       </div>
     </form>

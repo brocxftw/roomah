@@ -2,9 +2,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class UserRole(StrEnum):
@@ -52,6 +53,26 @@ class CampaignStatus(StrEnum):
     COMPLETED = "Completed"
 
 
+class CampaignContentTemplateFormat(StrEnum):
+    CAPTION = "Caption"
+    WHATSAPP = "WhatsApp"
+    EMAIL = "Email"
+    AD_COPY = "Ad Copy"
+    SMS = "SMS"
+
+
+class CampaignContentTemplateChannel(StrEnum):
+    FACEBOOK = "Facebook"
+    INSTAGRAM = "Instagram"
+    TIKTOK = "TikTok"
+    THREADS = "Threads"
+    GOOGLE = "Google"
+    WHATSAPP = "WhatsApp"
+    EMAIL = "Email"
+    SMS = "SMS"
+    OTHER = "Other"
+
+
 class LeadPropertyStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -87,6 +108,15 @@ class TimelineEventType(StrEnum):
 
 class RoomahModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+
+def validate_https_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("external_url must be an HTTPS URL")
+    return value
 
 
 class Team(RoomahModel):
@@ -152,6 +182,7 @@ class MarketingCampaign(RoomahModel):
     cost_per_lead: Decimal | None = Field(default=None, ge=0)
     conversion_rate: Decimal | None = Field(default=None, ge=0)
     budget: Decimal | None = Field(default=None, ge=0)
+    external_url: str | None = None
     created_by: UUID
     created_at: datetime
     updated_at: datetime
@@ -173,6 +204,12 @@ class MarketingCampaignCreate(RoomahModel):
     impressions: int = Field(default=0, ge=0)
     clicks: int = Field(default=0, ge=0)
     budget: Decimal | None = Field(default=None, ge=0)
+    external_url: str | None = None
+
+    @field_validator("external_url")
+    @classmethod
+    def validate_external_url(cls, value: str | None) -> str | None:
+        return validate_https_url(value)
 
     @model_validator(mode="after")
     def validate_campaign_metrics(self) -> "MarketingCampaignCreate":
@@ -195,6 +232,12 @@ class MarketingCampaignUpdate(RoomahModel):
     impressions: int | None = Field(default=None, ge=0)
     clicks: int | None = Field(default=None, ge=0)
     budget: Decimal | None = Field(default=None, ge=0)
+    external_url: str | None = None
+
+    @field_validator("external_url")
+    @classmethod
+    def validate_external_url(cls, value: str | None) -> str | None:
+        return validate_https_url(value)
 
     @model_validator(mode="after")
     def validate_campaign_metrics(self) -> "MarketingCampaignUpdate":
@@ -211,6 +254,36 @@ class MarketingCampaignUpdate(RoomahModel):
         ):
             raise ValueError("clicks must be less than or equal to impressions")
         return self
+
+
+class CampaignContentTemplate(RoomahModel):
+    id: UUID
+    team_id: UUID | None = None
+    name: str
+    channel: CampaignContentTemplateChannel
+    format: CampaignContentTemplateFormat
+    body: str
+    placeholders: list[str] = Field(default_factory=list)
+    is_starter: bool
+    created_by: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CampaignContentTemplateCreate(RoomahModel):
+    name: str = Field(min_length=1)
+    channel: CampaignContentTemplateChannel
+    format: CampaignContentTemplateFormat
+    body: str = Field(min_length=1)
+    placeholders: list[str] = Field(default_factory=list)
+
+
+class CampaignContentTemplateUpdate(RoomahModel):
+    name: str | None = Field(default=None, min_length=1)
+    channel: CampaignContentTemplateChannel | None = None
+    format: CampaignContentTemplateFormat | None = None
+    body: str | None = Field(default=None, min_length=1)
+    placeholders: list[str] | None = None
 
 
 class Property(RoomahModel):

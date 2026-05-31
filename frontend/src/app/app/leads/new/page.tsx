@@ -5,6 +5,10 @@ import { FormEvent, useState } from "react";
 
 import { CampaignPicker } from "@/components/campaign-picker";
 import { apiFetch } from "@/lib/api";
+import {
+  MALAYSIAN_STATES,
+  suggestCityFromAddress,
+} from "@/lib/malaysia-areas";
 import { useAuth } from "@/lib/use-auth";
 
 type Lead = {
@@ -25,12 +29,26 @@ export default function NewLeadPage() {
     budget_min: "",
     budget_max: "",
     preferred_location: "",
+    preferred_state: "",
+    preferred_city: "",
+    preferred_areas: "",
     preferred_property_type: "",
     campaign_id: null as string | null,
   });
 
   const updateField = (field: keyof typeof form, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updatePreferredLocation = (value: string) => {
+    setForm((current) => {
+      const suggestedCity = suggestCityFromAddress(value);
+      return {
+        ...current,
+        preferred_location: value,
+        preferred_city: current.preferred_city || suggestedCity,
+      };
+    });
   };
 
   const canAdvance = () => {
@@ -59,12 +77,20 @@ export default function NewLeadPage() {
       ...form,
       budget_min: form.budget_min ? Number(form.budget_min) : null,
       budget_max: form.budget_max ? Number(form.budget_max) : null,
+      preferred_location: form.preferred_location || null,
+      preferred_state: form.preferred_state || null,
+      preferred_city: form.preferred_city || null,
+      preferred_areas: form.preferred_areas
+        .split(",")
+        .map((area) => area.trim())
+        .filter(Boolean),
+      preferred_property_type: form.preferred_property_type || null,
     };
     const lead = await apiFetch<Lead>("/leads", token, {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    router.push(`/app/leads/${lead.id}`);
+    router.push(`/app/leads?lead=${lead.id}`);
   };
 
   return (
@@ -130,13 +156,36 @@ export default function NewLeadPage() {
 
       {step === 2 ? (
         <div className="space-y-4">
-          <input
-            value={form.preferred_location}
-            onChange={(event) =>
-              updateField("preferred_location", event.target.value)
-            }
-            placeholder="Preferred location"
+          <select
+            aria-label="Preferred state"
+            value={form.preferred_state}
+            onChange={(event) => updateField("preferred_state", event.target.value)}
             className="w-full rounded-md border px-3 py-2"
+          >
+            <option value="">Select preferred state</option>
+            {MALAYSIAN_STATES.map((state) => (
+              <option key={state} value={state}>
+                {state}
+              </option>
+            ))}
+          </select>
+          <input
+            value={form.preferred_city}
+            onChange={(event) => updateField("preferred_city", event.target.value)}
+            placeholder="Preferred city / area"
+            className="w-full rounded-md border px-3 py-2"
+          />
+          <input
+            value={form.preferred_areas}
+            onChange={(event) => updateField("preferred_areas", event.target.value)}
+            placeholder="Preferred areas, separated by commas"
+            className="w-full rounded-md border px-3 py-2"
+          />
+          <textarea
+            value={form.preferred_location}
+            onChange={(event) => updatePreferredLocation(event.target.value)}
+            placeholder="Optional location notes"
+            className="min-h-24 w-full rounded-md border px-3 py-2"
           />
           <input
             value={form.preferred_property_type}
@@ -150,9 +199,37 @@ export default function NewLeadPage() {
       ) : null}
 
       {step === 3 ? (
-        <pre className="rounded-lg border bg-muted p-4 text-sm">
-          {JSON.stringify(form, null, 2)}
-        </pre>
+        <div className="space-y-3 rounded-lg border bg-muted p-4 text-sm">
+          <div>
+            <p className="font-medium">Customer</p>
+            <p className="text-muted-foreground">
+              {form.name} · {form.phone} · {form.email}
+            </p>
+          </div>
+          <div>
+            <p className="font-medium">Budget</p>
+            <p className="text-muted-foreground">
+              {form.budget_min || "-"} - {form.budget_max || "-"}
+            </p>
+          </div>
+          <div>
+            <p className="font-medium">Preferences</p>
+            <p className="text-muted-foreground">
+              {[form.preferred_city, form.preferred_state]
+                .filter(Boolean)
+                .join(", ") || "-"}
+            </p>
+            <p className="text-muted-foreground">
+              Areas: {form.preferred_areas || "-"}
+            </p>
+            <p className="text-muted-foreground">
+              Notes: {form.preferred_location || "-"}
+            </p>
+            <p className="text-muted-foreground">
+              Property type: {form.preferred_property_type || "-"}
+            </p>
+          </div>
+        </div>
       ) : null}
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

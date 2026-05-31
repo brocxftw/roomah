@@ -22,6 +22,9 @@ class LeadCreate(BaseModel):
     budget_min: Decimal | None = Field(default=None, ge=0)
     budget_max: Decimal | None = Field(default=None, ge=0)
     preferred_location: str | None = None
+    preferred_state: str | None = Field(default=None, min_length=1)
+    preferred_city: str | None = Field(default=None, min_length=1)
+    preferred_areas: list[str] | None = None
     preferred_property_type: str | None = None
     campaign_id: UUID | None = None
 
@@ -44,6 +47,9 @@ class LeadUpdate(BaseModel):
     budget_min: Decimal | None = Field(default=None, ge=0)
     budget_max: Decimal | None = Field(default=None, ge=0)
     preferred_location: str | None = None
+    preferred_state: str | None = Field(default=None, min_length=1)
+    preferred_city: str | None = Field(default=None, min_length=1)
+    preferred_areas: list[str] | None = None
     preferred_property_type: str | None = None
     campaign_id: UUID | None = None
     status: LeadStatus | None = None
@@ -239,14 +245,36 @@ def create_lead(
 def list_leads(
     q: str | None = None,
     status_filter: LeadStatus | None = None,
+    source_filter: str | None = None,
+    owner_id: UUID | None = None,
+    preferred_state: str | None = None,
+    preferred_city: str | None = None,
     auth: AuthContext = Depends(get_auth_context),
 ) -> list[dict[str, Any]]:
     user = get_current_user_record(auth)
     query = _lead_query_for_user(auth, user).order("updated_at", desc=True)
     if status_filter is not None:
         query = query.eq("status", status_filter.value)
+    if user["role"] == "MANAGER" and owner_id is not None:
+        query = query.eq("ren_id", str(owner_id))
+    if preferred_state:
+        query = query.eq("preferred_state", preferred_state)
+    if preferred_city:
+        query = query.eq("preferred_city", preferred_city)
     if q:
-        query = query.or_(f"name.ilike.%{q}%,phone.ilike.%{q}%,email.ilike.%{q}%")
+        query = query.or_(
+            ",".join(
+                [
+                    f"name.ilike.%{q}%",
+                    f"phone.ilike.%{q}%",
+                    f"email.ilike.%{q}%",
+                    f"preferred_location.ilike.%{q}%",
+                    f"preferred_state.ilike.%{q}%",
+                    f"preferred_city.ilike.%{q}%",
+                    f"preferred_property_type.ilike.%{q}%",
+                ]
+            )
+        )
 
     leads = query.execute().data
     ren_refs = get_team_user_references(
@@ -257,7 +285,7 @@ def list_leads(
         auth=auth,
         campaign_ids={lead["campaign_id"] for lead in leads if lead.get("campaign_id")},
     )
-    return [
+    enriched_leads = [
         {
             **lead,
             "ren": ren_refs.get(lead["ren_id"]),
@@ -268,6 +296,13 @@ def list_leads(
         }
         for lead in leads
     ]
+    if source_filter:
+        enriched_leads = [
+            lead
+            for lead in enriched_leads
+            if (lead.get("campaign") or {}).get("channel") == source_filter
+        ]
+    return enriched_leads
 
 
 @router.get("/{lead_id}")
@@ -294,6 +329,16 @@ def get_lead(
         .limit(25)
         .execute()
     )
+    upcoming_viewings = (
+        supabase.table("viewings")
+        .select("*")
+        .eq("lead_id", str(lead_id))
+        .eq("team_id", auth.team_id)
+        .eq("status", "scheduled")
+        .order("scheduled_at")
+        .limit(5)
+        .execute()
+    )
 
     timeline_events = _enrich_timeline_events(auth, timeline.data)
 
@@ -306,6 +351,7 @@ def get_lead(
         ),
         "linked_properties": links.data,
         "timeline": timeline_events,
+        "upcoming_viewings": upcoming_viewings.data,
     }
 
 

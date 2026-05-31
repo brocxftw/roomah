@@ -838,6 +838,48 @@ def test_linking_mismatched_listing_type_returns_warning(monkeypatch) -> None:
     assert linked["warnings"]
 
 
+def test_lead_structured_location_fields_and_filters(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="KL Buyer",
+            phone="60123456789",
+            email="klbuyer@example.com",
+            preferred_location="Near KLCC or Mont Kiara",
+            preferred_state="Kuala Lumpur",
+            preferred_city="Mont Kiara",
+            preferred_areas=["Mont Kiara", "KLCC"],
+        ),
+        auth=auth,
+    )
+    lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Selangor Buyer",
+            phone="60987654321",
+            email="selangorbuyer@example.com",
+            preferred_location="Subang Jaya",
+            preferred_state="Selangor",
+            preferred_city="Subang Jaya",
+            preferred_areas=["Subang Jaya"],
+        ),
+        auth=auth,
+    )
+
+    kl_matches = lead_routes.list_leads(
+        preferred_state="Kuala Lumpur",
+        preferred_city="Mont Kiara",
+        auth=auth,
+    )
+    city_search_matches = lead_routes.list_leads(q="subang", auth=auth)
+
+    assert [lead["name"] for lead in kl_matches] == ["KL Buyer"]
+    assert kl_matches[0]["preferred_location"] == "Near KLCC or Mont Kiara"
+    assert kl_matches[0]["preferred_areas"] == ["Mont Kiara", "KLCC"]
+    assert [lead["name"] for lead in city_search_matches] == ["Selangor Buyer"]
+
+
 def test_deactivated_ren_cannot_close_deal(monkeypatch) -> None:
     supabase = FakeSupabase()
     auth = auth_context(REN_ID, "REN")

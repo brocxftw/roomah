@@ -1,58 +1,79 @@
 import Link from "next/link";
 import {
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
+  CircleDot,
   Flame,
   Home,
+  Megaphone,
   Plus,
   UserPlus,
   Users,
   Wallet,
 } from "lucide-react";
-import { FormEvent, useState } from "react";
 import type React from "react";
+
+type IconComponent = React.ComponentType<{
+  className?: string;
+  "aria-hidden"?: boolean;
+}>;
+
+type Tone = "red" | "amber" | "emerald" | "blue" | "slate";
 
 type KpiCard = {
   label: string;
   value: string | number;
-  helper?: string;
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  accent: "red" | "amber" | "emerald" | "blue" | "slate";
+  helper: string;
+  icon: IconComponent;
+  accent: Tone;
 };
 
-const kpiAccent: Record<KpiCard["accent"], string> = {
-  red: "text-red-600 bg-red-50",
-  amber: "text-amber-600 bg-amber-50",
-  emerald: "text-emerald-600 bg-emerald-50",
-  blue: "text-blue-600 bg-blue-50",
-  slate: "text-slate-700 bg-slate-100",
+const accentStyles: Record<Tone, string> = {
+  red: "bg-red-50 text-red-700 ring-red-100",
+  amber: "bg-amber-50 text-amber-700 ring-amber-100",
+  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  blue: "bg-blue-50 text-blue-700 ring-blue-100",
+  slate: "bg-slate-100 text-slate-700 ring-slate-200",
+};
+
+const taskToneStyles: Record<Tone, string> = {
+  red: "bg-red-50 text-red-700",
+  amber: "bg-amber-50 text-amber-700",
+  emerald: "bg-emerald-50 text-emerald-700",
+  blue: "bg-blue-50 text-blue-700",
+  slate: "bg-slate-100 text-slate-700",
 };
 
 export function KpiStrip({
-  followUpsOverdue,
-  viewingsToday,
-  dealsClosed,
   activeLeads,
+  propertiesListed,
+  dealsClosed,
   monthlyCommission,
+  followUpsDue,
+  targetProgressPercent,
 }: {
-  followUpsOverdue: number;
-  viewingsToday: number;
-  dealsClosed: number;
   activeLeads: number;
+  propertiesListed: number;
+  dealsClosed: number;
   monthlyCommission: string;
+  followUpsDue: number;
+  targetProgressPercent?: number | null;
 }) {
   const cards: KpiCard[] = [
     {
-      label: "Follow-ups Overdue",
-      value: followUpsOverdue,
-      icon: Flame,
-      accent: "red",
+      label: "Active Leads",
+      value: activeLeads,
+      helper: "In-flight customer conversations",
+      icon: Users,
+      accent: "blue",
     },
     {
-      label: "Viewings Today",
-      value: viewingsToday,
-      icon: CalendarDays,
-      accent: "amber",
+      label: "Properties Listed",
+      value: propertiesListed,
+      helper: "Active inventory",
+      icon: Home,
+      accent: "slate",
     },
     {
       label: "Deals Closed",
@@ -62,44 +83,52 @@ export function KpiStrip({
       accent: "emerald",
     },
     {
-      label: "Active Leads",
-      value: activeLeads,
-      icon: Users,
-      accent: "blue",
+      label: "Monthly Commission",
+      value: `RM ${monthlyCommission}`,
+      helper:
+        targetProgressPercent === null || targetProgressPercent === undefined
+          ? "This month"
+          : `${targetProgressPercent}% of target`,
+      icon: Wallet,
+      accent: "emerald",
     },
     {
-      label: "This Month's Commission",
-      value: `RM ${monthlyCommission}`,
-      icon: Wallet,
-      accent: "slate",
+      label: "Follow-ups Due",
+      value: followUpsDue,
+      helper: "Needs attention now",
+      icon: Flame,
+      accent: followUpsDue > 0 ? "red" : "slate",
     },
   ];
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <section
+      aria-label="Business performance"
+      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+    >
       {cards.map((card) => {
         const Icon = card.icon;
         return (
           <div
             key={card.label}
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
           >
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                {card.label}
-              </p>
+            <div className="flex items-start gap-3">
               <span
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${kpiAccent[card.accent]}`}
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1 ${accentStyles[card.accent]}`}
               >
-                <Icon className="size-4" aria-hidden />
+                <Icon className="size-5" aria-hidden />
               </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {card.label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+                  {card.value}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">{card.helper}</p>
+              </div>
             </div>
-            <p className="mt-3 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-              {card.value}
-            </p>
-            {card.helper ? (
-              <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
-            ) : null}
           </div>
         );
       })}
@@ -107,28 +136,7 @@ export function KpiStrip({
   );
 }
 
-type PriorityCardProps = {
-  title: string;
-  count: number;
-  href: string;
-  tone: "red" | "amber" | "green";
-  icon: "flame" | "calendar" | "wallet";
-};
-
-const toneStyles: Record<PriorityCardProps["tone"], string> = {
-  red: "border-red-200 bg-red-50 text-red-900 hover:border-red-300",
-  amber: "border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300",
-  green:
-    "border-emerald-200 bg-emerald-50 text-emerald-900 hover:border-emerald-300",
-};
-
-const priorityIcons = {
-  flame: Flame,
-  calendar: CalendarDays,
-  wallet: Wallet,
-};
-
-export function PriorityCards({
+export function TodayTasksWidget({
   counts,
 }: {
   counts: {
@@ -137,68 +145,79 @@ export function PriorityCards({
     deals_due: number;
   };
 }) {
-  const cards: PriorityCardProps[] = [
+  const tasks = [
     {
-      title: "Overdue Follow-ups",
+      label: "Follow-ups Due",
+      description: "Reconnect with leads that have gone quiet.",
       count: counts.overdue_follow_ups,
       href: "/app/leads?status=overdue",
-      tone: "red",
-      icon: "flame",
+      tone: "red" as const,
+      icon: Flame,
     },
     {
-      title: "Viewings Today",
+      label: "Viewings Today",
+      description: "Prepare, attend, and complete today's appointments.",
       count: counts.viewings_today,
       href: "/app/viewings?today=true",
-      tone: "amber",
-      icon: "calendar",
+      tone: "amber" as const,
+      icon: CalendarDays,
     },
     {
-      title: "Deals Closing Soon",
+      label: "Deals Closing Soon",
+      description: "Move negotiation-stage leads toward a close.",
       count: counts.deals_due,
       href: "/app/deals?status=closing",
-      tone: "green",
-      icon: "wallet",
+      tone: "emerald" as const,
+      icon: Wallet,
     },
   ];
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {cards.map((card) => {
-        const Icon = priorityIcons[card.icon];
-        return (
-          <Link
-            key={card.title}
-            href={card.href}
-            className={`rounded-xl border p-4 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${toneStyles[card.tone]}`}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">{card.title}</p>
-              <Icon className="size-5" aria-hidden />
-            </div>
-            <p className="mt-3 text-3xl font-semibold">{card.count}</p>
-          </Link>
-        );
-      })}
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">
+            Today&apos;s Tasks
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Start with the work most likely to need action now.
+          </p>
+        </div>
+      </div>
+      <div className="mt-5 divide-y divide-slate-100 dark:divide-slate-800">
+        {tasks.map((task) => {
+          const Icon = task.icon;
+          return (
+            <Link
+              key={task.label}
+              href={task.href}
+              className="group flex items-center gap-4 py-4 first:pt-0 last:pb-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${taskToneStyles[task.tone]}`}
+              >
+                <Icon className="size-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950 dark:text-slate-50">
+                  {task.label}
+                </span>
+                <span className="mt-1 block text-sm text-slate-500">
+                  {task.description}
+                </span>
+              </span>
+              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-slate-900 px-2 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+                {task.count}
+              </span>
+              <ArrowRight
+                className="size-4 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-700 dark:group-hover:text-slate-200"
+                aria-hidden
+              />
+            </Link>
+          );
+        })}
+      </div>
     </section>
-  );
-}
-
-export function SectionTitle({
-  title,
-  description,
-}: {
-  title: string;
-  description?: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      {description ? (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {description}
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -217,26 +236,40 @@ export function QuickActions() {
       href: "/app/viewings/new",
       icon: CalendarDays,
     },
-    { label: "Add Campaign", href: "/app/campaigns/new", icon: Plus },
+    { label: "Add Campaign", href: "/app/campaigns/new", icon: Megaphone },
   ];
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {actions.map((action) => {
-        const Icon = action.icon;
-        return (
-          <Link
-            key={action.label}
-            href={action.href}
-            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              <Icon className="size-4" aria-hidden />
-            </span>
-            {action.label}
-          </Link>
-        );
-      })}
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Quick Create</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Create the next record without leaving the dashboard.
+        </p>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <Link
+              key={action.label}
+              href={action.href}
+              className="group flex min-h-28 flex-col justify-between rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+            >
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200">
+                <Icon className="size-5" aria-hidden />
+              </span>
+              <span className="flex items-center justify-between gap-3">
+                {action.label}
+                <Plus
+                  className="size-4 text-slate-400 transition group-hover:text-slate-700 dark:group-hover:text-slate-200"
+                  aria-hidden
+                />
+              </span>
+            </Link>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -253,7 +286,12 @@ export function TodayAgenda({ items }: { items: AgendaItem[] }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold">Today&apos;s Agenda</h3>
+        <div>
+          <h3 className="text-base font-semibold">Today&apos;s Appointments</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Scheduled viewings to prepare, attend, and complete today.
+          </p>
+        </div>
         <Link
           href="/app/viewings?today=true"
           className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
@@ -261,38 +299,45 @@ export function TodayAgenda({ items }: { items: AgendaItem[] }) {
           View all
         </Link>
       </div>
-      <ul className="mt-4 space-y-3">
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
         {items.length === 0 ? (
-          <li className="text-sm text-slate-500">
+          <p className="p-4 text-sm text-slate-500">
             No viewings scheduled for today.
-          </li>
+          </p>
         ) : (
-          items.map((item) => {
-            const scheduled = new Date(item.scheduled_at);
-            const timeLabel = scheduled.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-            return (
-              <li
-                key={item.id}
-                className="flex items-center justify-between rounded-lg border border-slate-200 p-3 dark:border-slate-800"
-              >
-                <div>
-                  <p className="text-sm font-medium">Viewing at {timeLabel}</p>
-                  <p className="text-xs text-slate-500">
-                    Lead {item.lead_id.slice(0, 8)} · Property{" "}
-                    {item.property_id.slice(0, 8)}
-                  </p>
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            {items.map((item) => {
+              const scheduled = new Date(item.scheduled_at);
+              const timeLabel = scheduled.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              return (
+                <div
+                  key={item.id}
+                  className="grid gap-3 p-4 text-sm sm:grid-cols-[90px_minmax(0,1fr)_auto] sm:items-center"
+                >
+                  <span className="font-semibold text-slate-950 dark:text-slate-50">
+                    {timeLabel}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-800 dark:text-slate-100">
+                      Viewing appointment
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Lead {item.lead_id.slice(0, 8)} · Property{" "}
+                      {item.property_id.slice(0, 8)}
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium capitalize text-amber-800">
+                    {item.status}
+                  </span>
                 </div>
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                  {item.status}
-                </span>
-              </li>
-            );
-          })
+              );
+            })}
+          </div>
         )}
-      </ul>
+      </div>
     </section>
   );
 }
@@ -329,46 +374,6 @@ const funnelStyles: Record<string, { bar: string; bg: string; text: string }> =
     },
   };
 
-function pipelineInsight(stages: FunnelStage[]) {
-  const drops = stages.slice(0, -1).map((stage, index) => {
-    const nextStage = stages[index + 1];
-    return {
-      from: stage.stage,
-      to: nextStage.stage,
-      count: Math.max(stage.count - nextStage.count, 0),
-    };
-  });
-  const largestDrop = drops.reduce(
-    (largest, drop) => (drop.count > largest.count ? drop : largest),
-    { from: "", to: "", count: 0 }
-  );
-
-  if (largestDrop.count > 0) {
-    return {
-      label: "Largest snapshot gap",
-      title: `${largestDrop.from} to ${largestDrop.to}`,
-      description: `${largestDrop.count} fewer ${
-        largestDrop.count === 1 ? "lead" : "leads"
-      } in ${largestDrop.to} than ${largestDrop.from}.`,
-    };
-  }
-
-  const stalledStage = stages.reduce(
-    (largest, stage) => (stage.count > largest.count ? stage : largest),
-    stages[0] ?? { stage: "pipeline", count: 0, value: "0" }
-  );
-
-  return {
-    label: "Stalled stage to watch",
-    title: stalledStage.stage,
-    description: stalledStage.count
-      ? `${stalledStage.count} ${
-          stalledStage.count === 1 ? "lead is" : "leads are"
-        } currently concentrated here.`
-      : "No active leads are currently in the pipeline snapshot.",
-  };
-}
-
 export function PipelineFunnel({
   stages,
   conversionRate,
@@ -376,16 +381,13 @@ export function PipelineFunnel({
   stages: FunnelStage[];
   conversionRate: number | null;
 }) {
-  const maxCount = Math.max(...stages.map((stage) => stage.count), 1);
-  const insight = pipelineInsight(stages);
-
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h3 className="text-base font-semibold">Pipeline</h3>
           <p className="text-xs text-slate-500">
-            Lead snapshot by stage. Values reflect linked listing prices.
+            Customer lifecycle progress by stage.
           </p>
         </div>
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-right dark:bg-slate-800">
@@ -397,145 +399,42 @@ export function PipelineFunnel({
           </p>
         </div>
       </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(240px,1fr)]">
-        <div className="space-y-3" aria-label="Pipeline filter graph">
-          {stages.map((stage) => {
-            const styles = funnelStyles[stage.stage] ?? {
-              bar: "bg-slate-500",
-              bg: "bg-slate-50",
-              text: "text-slate-700",
-            };
-            const width = Math.max(
-              Math.round((stage.count / maxCount) * 100),
-              8
-            );
-            return (
-              <div key={stage.stage} className="flex justify-center">
-                <div
-                  className={`w-full rounded-xl border border-slate-200 p-3 ${styles.bg} dark:border-slate-800`}
-                  style={{ width: `${width}%` }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className={`text-sm font-semibold ${styles.text}`}>
-                        {stage.stage}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        RM {stage.value}
-                      </p>
-                    </div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {stage.count} {stage.count === 1 ? "lead" : "leads"}
-                    </p>
-                  </div>
-                  <div className="mt-3 h-2 rounded-full bg-white/80">
-                    <div className={`h-full rounded-full ${styles.bar}`} />
-                  </div>
+      <div
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+        aria-label="Pipeline stage progression"
+      >
+        {stages.map((stage, index) => {
+          const styles = funnelStyles[stage.stage] ?? {
+            bar: "bg-slate-500",
+            bg: "bg-slate-50",
+            text: "text-slate-700",
+          };
+          return (
+            <div key={stage.stage} className="relative">
+              <div
+                className={`h-full rounded-xl border border-slate-200 p-4 ${styles.bg} dark:border-slate-800`}
+              >
+                <p className={`text-sm font-semibold ${styles.text}`}>
+                  {stage.stage}
+                </p>
+                <p className="mt-3 text-2xl font-semibold text-slate-950 dark:text-slate-50">
+                  {stage.count}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">RM {stage.value}</p>
+                <div className="mt-4 h-1.5 rounded-full bg-white/80">
+                  <div className={`h-full w-full rounded-full ${styles.bar}`} />
                 </div>
               </div>
-            );
-          })}
-        </div>
-        <aside className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Pipeline insight
-          </p>
-          <p className="mt-3 text-sm text-slate-500">{insight.label}</p>
-          <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
-            {insight.title}
-          </p>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            {insight.description}
-          </p>
-          <p className="mt-4 text-xs text-slate-500">
-            Based on the current pipeline snapshot, not historical stage
-            transitions.
-          </p>
-        </aside>
+              {index < stages.length - 1 ? (
+                <ArrowRight
+                  className="absolute -right-2 top-1/2 z-10 hidden size-4 -translate-y-1/2 text-slate-300 xl:block"
+                  aria-hidden
+                />
+              ) : null}
+            </div>
+          );
+        })}
       </div>
-    </section>
-  );
-}
-
-export function TargetProgress({
-  scope,
-  title,
-  targetAmount,
-  currentAmount,
-  progressRatio,
-  dateRange,
-  onSaveTarget,
-}: {
-  scope: "personal" | "team";
-  title?: string;
-  targetAmount: string | null;
-  currentAmount: string;
-  progressRatio: number | null;
-  dateRange: string;
-  onSaveTarget: (amount: string) => Promise<void>;
-}) {
-  const [amount, setAmount] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const percent = Math.min(Math.round((progressRatio ?? 0) * 100), 100);
-  const heading =
-    title ??
-    (scope === "team" ? "Team Monthly Target" : "Your Monthly Target");
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!amount) return;
-    setSaving(true);
-    setMessage(null);
-    try {
-      await onSaveTarget(amount);
-      setMessage("Target updated.");
-      setAmount("");
-    } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Failed to update target."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-semibold">{heading}</h3>
-          <p className="text-xs text-slate-500">{dateRange}</p>
-        </div>
-        <p className="text-2xl font-semibold">{percent}%</p>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-        <div
-          className="h-full rounded-full bg-emerald-500"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-        RM {currentAmount} of {targetAmount ? `RM ${targetAmount}` : "no target"}
-      </p>
-      <form onSubmit={submit} className="mt-4 flex flex-wrap items-center gap-2">
-        <input
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder="Set new target (RM)"
-          className="min-h-10 flex-1 rounded-md border border-slate-200 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900"
-        />
-        <button
-          type="submit"
-          disabled={saving || !amount}
-          className="inline-flex min-h-10 items-center rounded-md bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
-      </form>
-      {message ? (
-        <p className="mt-2 text-xs text-slate-500">{message}</p>
-      ) : null}
     </section>
   );
 }
@@ -577,18 +476,23 @@ export function RecentActivity({
         <h3 className="text-base font-semibold">Recent Activity</h3>
         <p className="text-xs text-slate-500">{dateRange}</p>
       </div>
-      <ul className="mt-4 space-y-3">
+      <ul className="mt-5 space-y-0">
         {items.slice(0, 5).map((item) => {
           const created = new Date(item.created_at);
           const label = eventLabels[item.event_type] ?? item.event_type;
           return (
             <li
               key={item.id}
-              className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+              className="relative flex gap-3 border-l border-slate-200 pb-5 pl-5 last:border-l-transparent last:pb-0 dark:border-slate-800"
             >
-              <div>
-                <p className="text-sm font-medium">{label}</p>
-                <p className="text-xs text-slate-500">
+              <span className="absolute -left-2 top-0 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white text-slate-400 ring-4 ring-white dark:bg-slate-900 dark:ring-slate-900">
+                <CircleDot className="size-3" aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-950 dark:text-slate-50">
+                  {label}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
                   {created.toLocaleString()}
                 </p>
               </div>
@@ -599,6 +503,78 @@ export function RecentActivity({
           <li className="text-sm text-slate-500">No recent activity.</li>
         ) : null}
       </ul>
+    </section>
+  );
+}
+
+type FollowUpLead = {
+  id: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  status?: string | null;
+  last_interaction_at?: string | null;
+};
+
+export function FollowUpsQueue({ items }: { items: FollowUpLead[] }) {
+  const sortedItems = [...items].sort((a, b) => {
+    const aTime = a.last_interaction_at
+      ? new Date(a.last_interaction_at).getTime()
+      : 0;
+    const bTime = b.last_interaction_at
+      ? new Date(b.last_interaction_at).getTime()
+      : 0;
+    return aTime - bTime;
+  });
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold">Follow-ups Due</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Leads that need the next touchpoint.
+          </p>
+        </div>
+        <Link
+          href="/app/leads?status=overdue"
+          className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+        >
+          View all
+        </Link>
+      </div>
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+        {sortedItems.length === 0 ? (
+          <p className="p-4 text-sm text-slate-500">No overdue follow-ups.</p>
+        ) : (
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            {sortedItems.slice(0, 6).map((lead) => {
+              const lastInteraction = lead.last_interaction_at
+                ? new Date(lead.last_interaction_at).toLocaleDateString()
+                : "No recent interaction";
+              return (
+                <Link
+                  key={lead.id}
+                  href={`/app/leads/${lead.id}`}
+                  className="grid gap-3 p-4 text-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-slate-800 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                >
+                  <span className="min-w-0">
+                    <span className="block font-medium text-slate-950 dark:text-slate-50">
+                      {lead.name ?? `Lead ${lead.id.slice(0, 8)}`}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Last interaction: {lastInteraction}
+                    </span>
+                  </span>
+                  <span className="w-fit rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+                    {lead.status ?? "Follow-up"}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

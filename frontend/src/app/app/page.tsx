@@ -6,14 +6,13 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
+  FollowUpsQueue,
   KpiStrip,
   PipelineFunnel,
-  PriorityCards,
   QuickActions,
   RecentActivity,
-  SectionTitle,
-  TargetProgress,
   TodayAgenda,
+  TodayTasksWidget,
 } from "@/components/dashboard/dashboard-widgets";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
@@ -24,6 +23,15 @@ type TargetProgressData = {
   current_amount: string;
   progress_ratio: number | null;
   date_range: string;
+};
+
+type DashboardLead = {
+  id: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  status?: string | null;
+  last_interaction_at?: string | null;
 };
 
 type Dashboard = {
@@ -50,8 +58,20 @@ type Dashboard = {
     created_at: string;
     payload?: Record<string, unknown> | null;
   }[];
+  tasks: {
+    follow_ups_due: DashboardLead[];
+    upcoming_viewings: {
+      id: string;
+      lead_id: string;
+      property_id: string;
+      scheduled_at: string;
+      status: string;
+    }[];
+    deals_closing_soon: DashboardLead[];
+  };
   kpis: {
     active_leads: number;
+    properties_listed: number;
     deals_closed: number;
     monthly_commission: string;
     follow_ups_due: number;
@@ -68,7 +88,10 @@ export default function DashboardPage() {
   async function loadDashboard() {
     const token = await getToken();
     const params = new URLSearchParams({ date_range: dateRange });
-    const data = await apiFetch<Dashboard>(`/dashboard?${params.toString()}`, token);
+    const data = await apiFetch<Dashboard>(
+      `/dashboard?${params.toString()}`,
+      token
+    );
     setDashboard(data);
   }
 
@@ -79,16 +102,6 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken, dateRange]);
 
-  async function saveTarget(scope: "personal" | "team", amount: string) {
-    const token = await getToken();
-    const endpoint = scope === "team" ? "/manager/team-target" : "/users/me";
-    await apiFetch(endpoint, token, {
-      method: "PATCH",
-      body: JSON.stringify({ monthly_target_amount: Number(amount) }),
-    });
-    await loadDashboard();
-  }
-
   if (!dashboard) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -97,81 +110,45 @@ export default function DashboardPage() {
     );
   }
 
-  const isManager = dashboard.target_progress.scope === "team";
-  const personal = dashboard.personal_progress;
+  const targetProgressPercent =
+    dashboard.target_progress.progress_ratio === null
+      ? null
+      : Math.min(
+          Math.round(dashboard.target_progress.progress_ratio * 100),
+          100
+        );
 
   return (
     <div className="space-y-6">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <TodayTasksWidget counts={dashboard.priority_counts} />
+        <QuickActions />
+      </section>
+
       <KpiStrip
-        followUpsOverdue={dashboard.kpis.follow_ups_due}
-        viewingsToday={dashboard.priority_counts.viewings_today}
-        dealsClosed={dashboard.kpis.deals_closed}
         activeLeads={dashboard.kpis.active_leads}
+        propertiesListed={dashboard.kpis.properties_listed}
+        dealsClosed={dashboard.kpis.deals_closed}
         monthlyCommission={dashboard.kpis.monthly_commission}
+        followUpsDue={dashboard.kpis.follow_ups_due}
+        targetProgressPercent={targetProgressPercent}
       />
 
-      <SectionTitle
-        title="See how your business is doing"
-        description="Start with the work most likely to need action now."
-      />
-      <PriorityCards counts={dashboard.priority_counts} />
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <TodayAgenda items={dashboard.today_agenda} />
+        <RecentActivity
+          items={dashboard.recent_activity}
+          dateRange={dashboard.target_progress.date_range}
+        />
+      </section>
 
-      <SectionTitle
-        title="Quick Actions"
-        description="Create the next record without leaving the dashboard."
-      />
-      <QuickActions />
-
-      <TodayAgenda items={dashboard.today_agenda} />
-
-      <PipelineFunnel
-        stages={dashboard.funnel}
-        conversionRate={dashboard.pipeline_conversion_rate}
-      />
-
-      {isManager && personal ? (
-        <section className="grid gap-6 lg:grid-cols-3">
-          <TargetProgress
-            scope="team"
-            title="Team Monthly Target"
-            targetAmount={dashboard.target_progress.target_amount}
-            currentAmount={dashboard.target_progress.current_amount}
-            progressRatio={dashboard.target_progress.progress_ratio}
-            dateRange={dashboard.target_progress.date_range}
-            onSaveTarget={(amount) => saveTarget("team", amount)}
-          />
-          <TargetProgress
-            scope="personal"
-            title="Your Monthly Target"
-            targetAmount={personal.target_amount}
-            currentAmount={personal.current_amount}
-            progressRatio={personal.progress_ratio}
-            dateRange={personal.date_range}
-            onSaveTarget={(amount) => saveTarget("personal", amount)}
-          />
-          <RecentActivity
-            items={dashboard.recent_activity}
-            dateRange={dashboard.target_progress.date_range}
-          />
-        </section>
-      ) : (
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]">
-          <TargetProgress
-            scope={dashboard.target_progress.scope}
-            targetAmount={dashboard.target_progress.target_amount}
-            currentAmount={dashboard.target_progress.current_amount}
-            progressRatio={dashboard.target_progress.progress_ratio}
-            dateRange={dashboard.target_progress.date_range}
-            onSaveTarget={(amount) =>
-              saveTarget(dashboard.target_progress.scope, amount)
-            }
-          />
-          <RecentActivity
-            items={dashboard.recent_activity}
-            dateRange={dashboard.target_progress.date_range}
-          />
-        </section>
-      )}
+      <section className="grid gap-6 xl:grid-cols-2">
+        <PipelineFunnel
+          stages={dashboard.funnel}
+          conversionRate={dashboard.pipeline_conversion_rate}
+        />
+        <FollowUpsQueue items={dashboard.tasks.follow_ups_due} />
+      </section>
     </div>
   );
 }

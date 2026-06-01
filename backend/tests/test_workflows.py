@@ -309,6 +309,7 @@ class FakeSupabase:
             "viewings": [],
             "deals": [],
             "deal_documents": [],
+            "coaching_notes": [],
             "marketing_campaigns": [],
             "campaign_content_templates": [],
             "timeline_events": [],
@@ -2139,3 +2140,244 @@ def test_manager_can_patch_team_target_and_dashboard_uses_team_scope(
         "Won",
     }
     assert dashboard["pipeline_conversion_rate"] is None
+
+
+def test_manager_workspace_hydrates_kpis_rows_alerts_and_selected_member(
+    monkeypatch,
+) -> None:
+    """Integration-style route test: fake Supabase exercises API-level behavior."""
+
+    supabase = FakeSupabase()
+    auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    supabase.tables["teams"][0]["monthly_target_amount"] = "10000"
+    ren = next(user for user in supabase.tables["users"] if user["id"] == REN_ID)
+    ren["monthly_target_amount"] = "5000"
+    ren["commission_rate"] = "0.025"
+    active_lead = {
+        "id": "lead-active",
+        "team_id": TEAM_ID,
+        "ren_id": REN_ID,
+        "name": "Active Lead",
+        "phone": "60111111111",
+        "email": "active@example.com",
+        "status": "Active",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "updated_at": now.isoformat(),
+        "last_interaction_at": (now - timedelta(days=3)).isoformat(),
+        "campaign_id": None,
+    }
+    won_lead = {
+        **active_lead,
+        "id": "lead-won",
+        "name": "Won Lead",
+        "status": "Won",
+        "created_at": month_start.isoformat(),
+        "last_interaction_at": month_start.isoformat(),
+    }
+    supabase.tables["leads"].extend([active_lead, won_lead])
+    supabase.tables["viewings"].append(
+        {
+            "id": "viewing-upcoming",
+            "team_id": TEAM_ID,
+            "lead_id": active_lead["id"],
+            "property_id": "property-one",
+            "assigned_ren_id": REN_ID,
+            "scheduled_at": (now + timedelta(days=2)).isoformat(),
+            "status": "scheduled",
+            "created_at": now.isoformat(),
+        }
+    )
+    supabase.tables["deals"].extend(
+        [
+            {
+                "id": "deal-won",
+                "team_id": TEAM_ID,
+                "lead_id": won_lead["id"],
+                "property_id": "property-one",
+                "ren_id": REN_ID,
+                "sale_price": "500000",
+                "commission_rate": "0.02",
+                "agency_fee": "1000",
+                "lawyer_fees": "2000",
+                "commission_total": "7000",
+                "commission_override": None,
+                "stage": "closed_won",
+                "closed_at": (month_start + timedelta(days=1)).isoformat(),
+                "created_at": month_start.isoformat(),
+            },
+            {
+                "id": "deal-open",
+                "team_id": TEAM_ID,
+                "lead_id": active_lead["id"],
+                "property_id": "property-two",
+                "ren_id": REN_ID,
+                "sale_price": "300000",
+                "commission_rate": "0.02",
+                "agency_fee": "1000",
+                "lawyer_fees": "2000",
+                "commission_total": "3000",
+                "commission_override": None,
+                "stage": "negotiation",
+                "probability_override": "50",
+                "expected_close_date": (now + timedelta(days=10)).date().isoformat(),
+                "closed_at": None,
+                "created_at": now.isoformat(),
+            },
+        ]
+    )
+    supabase.tables["coaching_notes"].append(
+        {
+            "id": "note-one",
+            "team_id": TEAM_ID,
+            "ren_id": REN_ID,
+            "manager_id": MANAGER_ID,
+            "body": "Coach on follow-up cadence.",
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
+    )
+
+    workspace = manager_routes.get_manager_workspace(selected_ren_id=REN_ID, auth=auth)
+
+    assert set(workspace) == {
+        "kpis",
+        "analytics",
+        "team_performance",
+        "alerts",
+        "selected_member",
+    }
+    assert workspace["kpis"]["closed_won_mtd"]["count"] == 1
+    assert workspace["kpis"]["commission_mtd"]["value"] == "7000"
+    assert workspace["kpis"]["active_pipeline_value"]["value"] == "300000"
+    assert workspace["kpis"]["active_pipeline_value"]["weighted_value"] == "150000"
+    assert workspace["kpis"]["target_attainment"]["target_amount"] == "10000"
+    assert workspace["alerts"]["follow_ups_due"]["count"] == 1
+    assert workspace["alerts"]["upcoming_viewings"]["count"] == 1
+    assert workspace["alerts"]["deals_closing_soon"]["count"] == 1
+    assert len(workspace["analytics"]["performance_trend"]) == 12
+    assert len(workspace["analytics"]["commission_trend"]) == 6
+    assert workspace["team_performance"][0]["ren_id"] == OTHER_REN_ID
+    assert workspace["team_performance"][1]["ren_id"] == REN_ID
+    assert workspace["team_performance"][1]["active_pipeline"] == 1
+    assert workspace["selected_member"]["ren_id"] == REN_ID
+    assert workspace["selected_member"]["commission_configuration"] == {
+        "commission_rate": "0.025",
+        "monthly_target_amount": "5000",
+    }
+    assert workspace["selected_member"]["notes"][0]["body"] == "Coach on follow-up cadence."
+
+
+def test_manager_workspace_rejects_ren(monkeypatch) -> None:
+    """Integration-style route test: role enforcement is the visible contract."""
+
+    supabase = FakeSupabase()
+    patch_supabase(monkeypatch, supabase)
+
+    with pytest.raises(HTTPException) as exc_info:
+        manager_routes.get_manager_workspace(
+            selected_ren_id=None,
+            auth=auth_context(REN_ID, "REN"),
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_manager_can_patch_commission_and_target_without_rewriting_deals(
+    monkeypatch,
+) -> None:
+    """Integration-style route test: admin edits user config, deal snapshots stay fixed."""
+
+    supabase = FakeSupabase()
+    auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+    supabase.tables["deals"].append(
+        {
+            "id": "deal-won",
+            "team_id": TEAM_ID,
+            "lead_id": "lead-won",
+            "property_id": "property-one",
+            "ren_id": REN_ID,
+            "sale_price": "500000",
+            "commission_rate": "0.02",
+            "agency_fee": "1000",
+            "lawyer_fees": "2000",
+            "commission_total": "7000",
+            "commission_override": None,
+            "stage": "closed_won",
+            "closed_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+    updated = user_routes.update_user(
+        user_id=REN_ID,
+        payload=user_routes.UserAdminUpdate(
+            commission_rate=Decimal("0.03"),
+            monthly_target_amount=Decimal("6000"),
+        ),
+        auth=auth,
+    )
+
+    assert updated["commission_rate"] == "0.03"
+    assert updated["monthly_target_amount"] == "6000"
+    assert supabase.tables["deals"][0]["commission_rate"] == "0.02"
+
+
+def test_coaching_note_routes_create_list_delete_and_reject_ren(
+    monkeypatch,
+) -> None:
+    """Integration-style route test: note lifecycle goes through manager APIs."""
+
+    supabase = FakeSupabase()
+    manager_auth = auth_context(MANAGER_ID, "MANAGER")
+    ren_auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    note = manager_routes.create_coaching_note(
+        ren_id=UUID(REN_ID),
+        payload=manager_routes.CoachingNoteCreate(body=" Improve listing follow-ups. "),
+        auth=manager_auth,
+    )
+    notes = manager_routes.list_coaching_notes(ren_id=UUID(REN_ID), auth=manager_auth)
+
+    assert note["body"] == "Improve listing follow-ups."
+    assert notes[0]["body"] == "Improve listing follow-ups."
+    assert notes[0]["author"]["id"] == MANAGER_ID
+    with pytest.raises(HTTPException) as exc_info:
+        manager_routes.list_coaching_notes(ren_id=UUID(REN_ID), auth=ren_auth)
+    assert exc_info.value.status_code == 403
+
+    manager_routes.delete_coaching_note(
+        ren_id=UUID(REN_ID),
+        note_id=UUID(note["id"]),
+        auth=manager_auth,
+    )
+
+    assert manager_routes.list_coaching_notes(ren_id=UUID(REN_ID), auth=manager_auth) == []
+
+
+def test_coaching_note_rejects_empty_body(monkeypatch) -> None:
+    """Integration-style route test: validation protects note quality."""
+
+    supabase = FakeSupabase()
+    patch_supabase(monkeypatch, supabase)
+
+    with pytest.raises(ValueError):
+        manager_routes.CoachingNoteCreate(body="   ")
+
+
+def test_legacy_manager_dashboard_and_campaigns_stay_available(monkeypatch) -> None:
+    """Integration-style route test: redesigned workspace does not remove old APIs."""
+
+    supabase = FakeSupabase()
+    auth = auth_context(MANAGER_ID, "MANAGER")
+    patch_supabase(monkeypatch, supabase)
+
+    dashboard = manager_routes.get_manager_dashboard(auth=auth)
+    campaigns = manager_routes.get_manager_campaigns(auth=auth)
+
+    assert {row["ren_id"] for row in dashboard} == {REN_ID, MANAGER_ID, OTHER_REN_ID}
+    assert campaigns == {"campaigns": [], "channel_rollups": []}

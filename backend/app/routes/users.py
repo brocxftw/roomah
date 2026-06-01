@@ -32,6 +32,8 @@ class UserAdminUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=1)
     phone_number: str | None = None
     active_status: bool | None = None
+    commission_rate: Decimal | None = Field(default=None, ge=0)
+    monthly_target_amount: Decimal | None = Field(default=None, ge=0)
 
 
 def _user_query(auth: AuthContext):

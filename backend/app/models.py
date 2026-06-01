@@ -152,7 +152,18 @@ class User(RoomahModel):
     full_name: str
     phone_number: str | None = None
     active_status: bool
+    monthly_target_amount: Decimal | None = Field(default=None, ge=0)
     created_at: datetime
+
+
+class CoachingNote(RoomahModel):
+    id: UUID
+    team_id: UUID
+    ren_id: UUID
+    manager_id: UUID
+    body: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class TeamConfig(RoomahModel):

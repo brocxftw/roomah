@@ -126,6 +126,7 @@ const pageMeta: Record<
   "/app/manager": {
     title: "Manager",
     description: "Monitor team performance and campaign oversight.",
+    primaryAction: { label: "+ Add Team Member", href: "/app/manager/team/new" },
   },
   "/app/profile": {
     title: "Profile",

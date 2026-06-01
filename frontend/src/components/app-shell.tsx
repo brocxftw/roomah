@@ -113,7 +113,6 @@ const pageMeta: Record<
     title: "Campaigns",
     description: "Review channels and campaign performance.",
     primaryAction: { label: "+ Add Campaign", href: "/app/campaigns/new" },
-    secondaryAction: { label: "Templates", href: "/app/campaigns/templates" },
   },
   "/app/viewings": {
     title: "Viewings",
@@ -507,6 +506,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
                     + Viewing
+                  </Link>
+                  <Link
+                    href="/app/campaigns/new"
+                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    + Campaign
                   </Link>
                   <Link
                     href="/app/deals"

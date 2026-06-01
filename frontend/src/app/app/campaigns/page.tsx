@@ -13,9 +13,12 @@ import {
   Minus,
   PauseCircle,
   Pencil,
+  PlayCircle,
   RefreshCcw,
   Target,
+  Trash2,
   Users,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
@@ -30,6 +33,7 @@ type Campaign = {
   id: string;
   name: string;
   channel: string;
+  channel_other_label?: string | null;
   status: string;
   campaign_start_date: string;
   campaign_end_date?: string | null;
@@ -63,14 +67,14 @@ type AttributedLead = {
 const CAMPAIGN_STATUSES = ["Draft", "Active", "Paused", "Completed"];
 const CAMPAIGN_CHANNELS = [
   "Facebook",
-  "Instagram",
-  "Google",
+  "WhatsApp",
   "TikTok",
-  "Email",
-  "Referral",
-  "Walk_In",
-  "Other",
+  "Threads",
+  "Instagram",
+  "Mudah.my",
+  "Others",
 ];
+const OTHERS_CHANNEL = "Others";
 const DRAWER_TABS = ["overview", "performance", "leads", "timeline"] as const;
 type DrawerTab = (typeof DRAWER_TABS)[number];
 
@@ -174,9 +178,91 @@ function costPerConversion(campaign: Campaign) {
   return asNumber(campaign.ad_spending) / campaign.conversions;
 }
 
+function derivedClickThroughRate(campaign: Campaign) {
+  const impressions = asNumber(campaign.impressions);
+  if (!impressions) return null;
+  return (asNumber(campaign.clicks) / impressions) * 100;
+}
+
+function derivedBudgetUtilisation(campaign: Campaign) {
+  const budget = asNumber(campaign.budget);
+  if (!budget) return null;
+  return (asNumber(campaign.ad_spending) / budget) * 100;
+}
+
+function channelDisplay(campaign: Pick<Campaign, "channel" | "channel_other_label">) {
+  if (campaign.channel === OTHERS_CHANNEL && campaign.channel_other_label) {
+    return campaign.channel_other_label;
+  }
+  return campaign.channel;
+}
+
+// Flat monochrome icons (Icons8 ios_filled style) keyed by campaign channel.
+// Single weight + neutral colour so they read consistently with the rest of
+// the Lucide-based UI; the `ChannelAvatar` chip recolours them via
+// `currentColor` mask so they pick up the theme.
+const CHANNEL_ICON_URLS: Record<string, string> = {
+  Facebook: "https://img.icons8.com/?id=118467&format=png&size=48",
+  WhatsApp: "https://img.icons8.com/?id=16733&format=png&size=48",
+  TikTok: "https://img.icons8.com/?id=118638&format=png&size=48",
+  Threads: "https://img.icons8.com/?id=AS2a6aA9BwK3&format=png&size=48",
+  Instagram: "https://img.icons8.com/?id=32309&format=png&size=48",
+  "Mudah.my": "https://img.icons8.com/?id=8287&format=png&size=48",
+  Others: "https://img.icons8.com/?id=9542&format=png&size=48",
+};
+
 function channelInitial(channel: string) {
-  if (channel === "Walk_In") return "WI";
+  if (channel === "Mudah.my") return "MD";
+  if (channel === OTHERS_CHANNEL) return "··";
   return channel.slice(0, 2).toUpperCase();
+}
+
+function ChannelAvatar({
+  channel,
+  size = "md",
+}: {
+  channel: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const dims =
+    size === "lg" ? "h-12 w-12" : size === "sm" ? "h-8 w-8" : "h-10 w-10";
+  const inner =
+    size === "lg" ? "h-6 w-6" : size === "sm" ? "h-4 w-4" : "h-5 w-5";
+  const url = CHANNEL_ICON_URLS[channel];
+  if (url) {
+    // The PNG is monochrome black; we use it as a CSS mask on a slate-coloured
+    // <span> so the icon picks up the app's text colour and stays flat /
+    // theme-consistent in both light and dark mode.
+    return (
+      <span
+        className={`flex ${dims} shrink-0 items-center justify-center rounded-full bg-slate-100 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700`}
+        title={channel}
+      >
+        <span
+          aria-label={`${channel} channel`}
+          role="img"
+          className={`${inner} bg-slate-700 dark:bg-slate-200`}
+          style={{
+            WebkitMaskImage: `url(${url})`,
+            maskImage: `url(${url})`,
+            WebkitMaskRepeat: "no-repeat",
+            maskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            maskPosition: "center",
+            WebkitMaskSize: "contain",
+            maskSize: "contain",
+          }}
+        />
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`flex ${dims} shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700`}
+    >
+      {channelInitial(channel)}
+    </span>
+  );
 }
 
 function statusBadgeClass(status: string) {
@@ -202,11 +288,13 @@ function parseExternalPlatform(url?: string | null, channel?: string) {
         ? "TikTok"
         : host.includes("threads")
           ? "Threads"
-          : host.includes("google")
-            ? "Google"
-            : channel && ["Facebook", "Instagram", "TikTok", "Google"].includes(channel)
-              ? channel
-              : null;
+          : host.includes("whatsapp") || host === "wa.me"
+            ? "WhatsApp"
+            : host.includes("mudah")
+              ? "Mudah.my"
+              : channel && CAMPAIGN_CHANNELS.includes(channel) && channel !== OTHERS_CHANNEL
+                ? channel
+                : null;
   return {
     url,
     label: platform ? `View on ${platform}` : "View campaign",
@@ -325,6 +413,7 @@ export default function CampaignsPage() {
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignDetail | null>(
     null
   );
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [channel, setChannel] = useState("");
@@ -381,6 +470,40 @@ export default function CampaignsPage() {
       setError(err instanceof Error ? err.message : "Failed to load campaigns");
     });
   }, [getToken, query, status, channel]);
+
+  useEffect(() => {
+    async function loadRole() {
+      const token = await getToken();
+      const me = await apiFetch<{ role?: string }>("/users/me", token);
+      setCurrentUserRole(me?.role ?? null);
+    }
+    void loadRole().catch(() => {
+      // Non-fatal: row metric edits will be hidden if we can't determine role.
+    });
+  }, [getToken]);
+
+  async function patchCampaignMetric(campaignId: string, field: string, value: number) {
+    const token = await getToken();
+    const updated = await apiFetch<Campaign>(`/campaigns/${campaignId}`, token, {
+      method: "PATCH",
+      body: JSON.stringify({ [field]: value }),
+    });
+    setCampaigns((current) =>
+      current.map((row) =>
+        row.id === campaignId ? { ...row, ...updated } : row
+      )
+    );
+    setSelectedCampaign((current) =>
+      current && current.id === campaignId
+        ? { ...current, ...updated }
+        : current
+    );
+  }
+
+  function canEditMetric(campaign: Campaign) {
+    if (currentUserRole === "MANAGER") return true;
+    return campaign.status === "Draft";
+  }
 
   async function loadSelectedCampaign(campaignId: string) {
     setLoadingDetail(true);
@@ -466,23 +589,61 @@ export default function CampaignsPage() {
     router.replace("/app/campaigns");
   }
 
-  async function pauseCampaign() {
+  // Drives the single status-toggle button in the drawer footer:
+  // - Draft  → "Launch Campaign"   (Active)
+  // - Active → "Pause"             (Paused)
+  // - Paused → "Resume"            (Active)
+  // Completed campaigns hide the toggle entirely.
+  async function transitionCampaignStatus(nextStatus: "Active" | "Paused") {
     if (!selectedCampaign) return;
     const token = await getToken();
-    const updated = await apiFetch<CampaignDetail>(
-      `/campaigns/${selectedCampaign.id}`,
-      token,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ status: "Paused" }),
-      }
+    try {
+      const updated = await apiFetch<CampaignDetail>(
+        `/campaigns/${selectedCampaign.id}`,
+        token,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: nextStatus }),
+        }
+      );
+      setSelectedCampaign({ ...selectedCampaign, ...updated });
+      setCampaigns((current) =>
+        current.map((campaign) =>
+          campaign.id === selectedCampaign.id
+            ? { ...campaign, ...updated }
+            : campaign
+        )
+      );
+      setError(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update campaign status"
+      );
+    }
+  }
+
+  async function deleteCampaign() {
+    if (!selectedCampaign) return;
+    const confirmation = window.confirm(
+      `Delete the "${selectedCampaign.name}" campaign? Attributed leads will stay in the system but will no longer be linked to this campaign. This cannot be undone.`
     );
-    setSelectedCampaign({ ...selectedCampaign, ...updated });
-    setCampaigns((current) =>
-      current.map((campaign) =>
-        campaign.id === selectedCampaign.id ? { ...campaign, ...updated } : campaign
-      )
-    );
+    if (!confirmation) return;
+    const token = await getToken();
+    try {
+      await apiFetch(`/campaigns/${selectedCampaign.id}`, token, {
+        method: "DELETE",
+      });
+      setCampaigns((current) =>
+        current.filter((campaign) => campaign.id !== selectedCampaign.id)
+      );
+      setSelectedCampaign(null);
+      updateSelection(null);
+      setError(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete campaign"
+      );
+    }
   }
 
   return (
@@ -551,34 +712,40 @@ export default function CampaignsPage() {
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="grid grid-cols-[1.6fr_0.8fr_0.8fr_1fr_0.8fr_0.8fr_0.9fr_0.7fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className="grid grid-cols-[1.6fr_0.8fr_0.7fr_1fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <span>Campaign</span>
           <span>Channel</span>
           <span>Status</span>
           <span>Period</span>
-          <span>Spend</span>
-          <span>Leads</span>
-          <span>Cost / Lead</span>
-          <span>Link</span>
+          <span>Spending</span>
+          <span>Impressions</span>
+          <span>Clicks</span>
+          <span>Leads / Closed</span>
+          <span>Conv. Rate</span>
         </div>
         {paginatedCampaigns.map((campaign) => {
           const selected = selectedCampaignId === campaign.id;
-          const external = parseExternalPlatform(campaign.external_url, campaign.channel);
+          const editable = canEditMetric(campaign);
           return (
-            <button
+            <div
               key={campaign.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               data-campaign-row="true"
               onClick={() => updateSelection(campaign.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  updateSelection(campaign.id);
+                }
+              }}
               className={[
-                "grid w-full grid-cols-[1.6fr_0.8fr_0.8fr_1fr_0.8fr_0.8fr_0.9fr_0.7fr] gap-4 border-b px-4 py-4 text-left text-sm transition last:border-b-0 hover:bg-slate-50",
+                "grid w-full cursor-pointer grid-cols-[1.6fr_0.8fr_0.7fr_1fr_0.8fr_0.8fr_0.8fr_0.8fr_0.7fr] items-center gap-4 border-b px-4 py-4 text-left text-sm transition last:border-b-0 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 selected ? "bg-blue-50/60 ring-1 ring-inset ring-blue-200" : "",
               ].join(" ")}
             >
               <span className="flex min-w-0 items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-                  {channelInitial(campaign.channel)}
-                </span>
+                <ChannelAvatar channel={campaign.channel} />
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-slate-900">
                     {campaign.name}
@@ -588,7 +755,9 @@ export default function CampaignsPage() {
                   </span>
                 </span>
               </span>
-              <span className="truncate text-slate-700">{campaign.channel}</span>
+              <span className="truncate text-slate-700">
+                {channelDisplay(campaign)}
+              </span>
               <span>
                 <span
                   className={[
@@ -603,44 +772,37 @@ export default function CampaignsPage() {
               <span className="font-medium text-slate-900">
                 {formatCurrency(campaign.ad_spending)}
               </span>
+              <MetricCell
+                value={campaign.impressions ?? 0}
+                canEdit={editable}
+                onSave={(next) =>
+                  patchCampaignMetric(campaign.id, "impressions", next)
+                }
+              />
+              <MetricCell
+                value={campaign.clicks ?? 0}
+                canEdit={editable}
+                onSave={(next) =>
+                  patchCampaignMetric(campaign.id, "clicks", next)
+                }
+              />
               <span className="text-slate-700">
                 {campaign.leads_generated} / {campaign.conversions}
               </span>
               <span className="text-slate-700">
-                {formatCurrency(derivedCostPerLead(campaign))}
+                {formatPercent(derivedConversionRate(campaign))}
               </span>
-              <span>
-                {external ? (
-                  <a
-                    href={external.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(event) => event.stopPropagation()}
-                    className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-700"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                    Open
-                  </a>
-                ) : (
-                  <span className="text-xs text-slate-400">-</span>
-                )}
-              </span>
-            </button>
+            </div>
           );
         })}
         {!visibleCampaigns.length ? (
           <div className="p-8 text-center">
             <p className="text-sm font-medium text-slate-900">No campaigns found.</p>
             <p className="mt-1 text-sm text-slate-500">
-              Start from scratch or browse reusable campaign content templates.
+              Create a campaign to start tracking spend, leads, and
+              conversions.
             </p>
-            <div className="mt-4 flex justify-center gap-2">
-              <Link
-                href="/app/campaigns/templates"
-                className="rounded-lg border px-3 py-2 text-sm font-medium"
-              >
-                Browse templates
-              </Link>
+            <div className="mt-4 flex justify-center">
               <Link
                 href="/app/campaigns/new"
                 className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
@@ -701,7 +863,8 @@ export default function CampaignsPage() {
           tab={drawerTab}
           onTabChange={updateDrawerTab}
           onClose={() => updateSelection(null)}
-          onPause={() => void pauseCampaign()}
+          onTransitionStatus={(next) => void transitionCampaignStatus(next)}
+          onDelete={() => void deleteCampaign()}
         />
       ) : null}
     </div>
@@ -738,7 +901,8 @@ function CampaignDrawer({
   tab,
   onTabChange,
   onClose,
-  onPause,
+  onTransitionStatus,
+  onDelete,
 }: {
   containerRef: React.RefObject<HTMLElement | null>;
   campaign: CampaignDetail | null;
@@ -746,9 +910,24 @@ function CampaignDrawer({
   tab: DrawerTab;
   onTabChange: (tab: DrawerTab) => void;
   onClose: () => void;
-  onPause: () => void;
+  onTransitionStatus: (nextStatus: "Active" | "Paused") => void;
+  onDelete: () => void;
 }) {
   const external = parseExternalPlatform(campaign?.external_url, campaign?.channel);
+  // Status toggle config: which status to flip to and how the button reads.
+  const statusToggle = (() => {
+    if (!campaign) return null;
+    if (campaign.status === "Draft") {
+      return { next: "Active" as const, label: "Launch Campaign", icon: PlayCircle };
+    }
+    if (campaign.status === "Active") {
+      return { next: "Paused" as const, label: "Pause", icon: PauseCircle };
+    }
+    if (campaign.status === "Paused") {
+      return { next: "Active" as const, label: "Resume", icon: PlayCircle };
+    }
+    return null;
+  })();
   return (
     <aside
       ref={containerRef}
@@ -764,13 +943,20 @@ function CampaignDrawer({
         <div className="flex min-h-full flex-col">
           <div className="border-b p-5">
             <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
-                  {channelInitial(campaign.channel)}
-                </span>
-                <div>
-                  <h3 className="font-semibold text-slate-900">{campaign.name}</h3>
-                  <p className="text-sm text-slate-500">{campaign.channel}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <ChannelAvatar channel={campaign.channel} size="lg" />
+                <div className="min-w-0">
+                  <h3 className="truncate font-semibold text-slate-900">
+                    {campaign.name}
+                  </h3>
+                  <span
+                    className={[
+                      "mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1",
+                      statusBadgeClass(campaign.status),
+                    ].join(" ")}
+                  >
+                    {campaign.status}
+                  </span>
                 </div>
               </div>
               <button
@@ -780,19 +966,6 @@ function CampaignDrawer({
               >
                 Close
               </button>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span
-                className={[
-                  "rounded-full px-2.5 py-1 text-xs font-medium ring-1",
-                  statusBadgeClass(campaign.status),
-                ].join(" ")}
-              >
-                {campaign.status}
-              </span>
-              <span className="text-xs text-slate-500">
-                {campaignPeriod(campaign)}
-              </span>
             </div>
           </div>
 
@@ -820,28 +993,63 @@ function CampaignDrawer({
             {loading ? <p className="text-sm text-slate-500">Loading campaign...</p> : null}
             {tab === "overview" ? (
               <div className="space-y-4">
-                <InfoCard title="Campaign Context">
+                <InfoCard title="Campaign Information">
                   <dl className="space-y-2 text-sm">
-                    <InfoRow label="Channel" value={campaign.channel} />
+                    <InfoRow label="Campaign" value={campaign.name} />
+                    <InfoRow label="Channel" value={channelDisplay(campaign)} />
+                    <InfoRow label="Status" value={campaign.status} />
                     <InfoRow label="Period" value={campaignPeriod(campaign)} />
-                    <InfoRow label="Budget" value={formatCurrency(campaign.budget)} />
                     <InfoRow
-                      label="Spend"
+                      label="Spending"
                       value={formatCurrency(campaign.ad_spending)}
+                    />
+                    <InfoRow
+                      label="Budget"
+                      value={formatCurrency(campaign.budget)}
+                    />
+                    <InfoRow
+                      label="Impressions"
+                      value={formatNumber(campaign.impressions ?? 0)}
+                    />
+                    <InfoRow
+                      label="Clicks"
+                      value={formatNumber(campaign.clicks ?? 0)}
+                    />
+                    <InfoRow
+                      label="Leads / Closed"
+                      value={`${formatNumber(campaign.leads_generated)} / ${formatNumber(campaign.conversions)}`}
+                    />
+                    <InfoRow
+                      label="Conversion rate"
+                      value={formatPercent(derivedConversionRate(campaign))}
+                    />
+                    <InfoRow
+                      label="Campaign URL"
+                      value={
+                        external ? (
+                          <a
+                            href={external.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-slate-700 underline-offset-2 hover:underline"
+                          >
+                            <ExternalLink
+                              className="h-3.5 w-3.5"
+                              aria-hidden
+                            />
+                            {external.label}
+                          </a>
+                        ) : (
+                          "-"
+                        )
+                      }
+                    />
+                    <InfoRow
+                      label="Last updated"
+                      value={formatDate(campaign.updated_at)}
                     />
                   </dl>
                 </InfoCard>
-                {external ? (
-                  <a
-                    href={external.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
-                  >
-                    <ExternalLink className="h-4 w-4" aria-hidden />
-                    {external.label}
-                  </a>
-                ) : null}
                 <InfoCard title="Actionable Insight">
                   <p className="text-sm text-slate-600">
                     {campaign.leads_generated
@@ -853,26 +1061,29 @@ function CampaignDrawer({
             ) : null}
 
             {tab === "performance" ? (
+              // Performance tab focuses on derived metrics that aren't already
+              // rendered as raw values in the Overview / Campaign Information
+              // card to avoid duplicating data.
               <div className="grid gap-3 sm:grid-cols-2">
                 <MetricCard
-                  label="Spend"
-                  value={formatCurrency(campaign.ad_spending)}
-                  helper={`Budget ${formatCurrency(campaign.budget)}`}
+                  label="CTR"
+                  value={formatPercent(derivedClickThroughRate(campaign))}
+                  helper={`${formatNumber(campaign.clicks ?? 0)} / ${formatNumber(campaign.impressions ?? 0)}`}
                 />
                 <MetricCard
-                  label="Lead Gen"
-                  value={formatNumber(campaign.leads_generated)}
-                  helper={`${formatCurrency(derivedCostPerLead(campaign))} / lead`}
+                  label="Cost / Lead"
+                  value={formatCurrency(derivedCostPerLead(campaign))}
+                  helper={`${formatNumber(campaign.leads_generated)} leads`}
                 />
                 <MetricCard
-                  label="Conversion"
-                  value={formatNumber(campaign.conversions)}
-                  helper={`${formatPercent(derivedConversionRate(campaign))} rate`}
-                />
-                <MetricCard
-                  label="Efficiency"
+                  label="Cost / Conversion"
                   value={formatCurrency(costPerConversion(campaign))}
-                  helper="Cost / conversion"
+                  helper={`${formatNumber(campaign.conversions)} closed`}
+                />
+                <MetricCard
+                  label="Budget Used"
+                  value={formatPercent(derivedBudgetUtilisation(campaign))}
+                  helper={`${formatCurrency(campaign.ad_spending)} of ${formatCurrency(campaign.budget)}`}
                 />
               </div>
             ) : null}
@@ -939,15 +1150,22 @@ function CampaignDrawer({
               <Eye className="h-4 w-4" aria-hidden />
               View leads
             </Link>
-            <button
-              type="button"
-              onClick={onPause}
-              disabled={campaign.status === "Paused"}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              <PauseCircle className="h-4 w-4" aria-hidden />
-              Pause
-            </button>
+            {statusToggle ? (
+              <button
+                type="button"
+                onClick={() => onTransitionStatus(statusToggle.next)}
+                className={[
+                  "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium",
+                  // Highlight Launch primary so it pops when a Draft is opened.
+                  campaign.status === "Draft"
+                    ? "bg-slate-900 text-white hover:bg-slate-700"
+                    : "border",
+                ].join(" ")}
+              >
+                <statusToggle.icon className="h-4 w-4" aria-hidden />
+                {statusToggle.label}
+              </button>
+            ) : null}
             <Link
               href={`/app/campaigns/new?duplicate=${campaign.id}`}
               className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium"
@@ -960,12 +1178,20 @@ function CampaignDrawer({
                 href={external.url}
                 target="_blank"
                 rel="noreferrer"
-                className="col-span-2 inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                className="col-span-2 inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 <ArrowUpRight className="h-4 w-4" aria-hidden />
                 {external.label}
               </a>
             ) : null}
+            <button
+              type="button"
+              onClick={onDelete}
+              className="col-span-2 inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+              Delete campaign
+            </button>
           </div>
         </div>
       )}
@@ -988,11 +1214,17 @@ function InfoCard({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | React.ReactNode;
+}) {
   return (
-    <div>
+    <div className="flex items-baseline justify-between gap-3">
       <dt className="text-slate-500">{label}</dt>
-      <dd className="font-medium text-slate-900">{value}</dd>
+      <dd className="text-right font-medium text-slate-900">{value}</dd>
     </div>
   );
 }
@@ -1012,5 +1244,128 @@ function MetricCard({
       <p className="mt-1 text-lg font-semibold text-slate-900">{value}</p>
       <p className="mt-1 text-xs text-slate-500">{helper}</p>
     </div>
+  );
+}
+
+/**
+ * Inline editable numeric cell for campaign rows. Shows "-" for empty/zero,
+ * pencil button to enter edit mode (Enter saves, Esc cancels). Stops click
+ * propagation so the surrounding row click doesn't fire.
+ */
+function MetricCell({
+  value,
+  canEdit,
+  onSave,
+}: {
+  value: number | null | undefined;
+  canEdit: boolean;
+  onSave: (next: number) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function startEdit(event: React.MouseEvent) {
+    event.stopPropagation();
+    setDraft(value != null && value > 0 ? String(value) : "");
+    setError(null);
+    setEditing(true);
+  }
+
+  async function commit() {
+    const trimmed = draft.trim();
+    const parsed = trimmed === "" ? 0 : Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setError("Value must be a non-negative number");
+      return;
+    }
+    try {
+      setSaving(true);
+      setError(null);
+      await onSave(parsed);
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function cancel() {
+    setEditing(false);
+    setError(null);
+  }
+
+  if (editing) {
+    // The editor is sized to the same footprint as the display (icon button +
+    // narrow input) so toggling edit mode doesn't reflow the surrounding grid
+    // columns. Save = Enter or blur; Cancel = Esc or click the X.
+    return (
+      <span
+        className="relative flex items-center gap-1"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          // mousedown so the click runs before the input's blur (which would
+          // otherwise commit the draft).
+          onMouseDown={(event) => {
+            event.preventDefault();
+            cancel();
+          }}
+          disabled={saving}
+          aria-label="Cancel edit"
+          title="Cancel"
+          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
+        >
+          <X className="h-3 w-3" aria-hidden />
+        </button>
+        <input
+          type="number"
+          min="0"
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void commit();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancel();
+            }
+          }}
+          onBlur={() => {
+            if (editing) void commit();
+          }}
+          disabled={saving}
+          className="w-16 rounded border px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        {error ? (
+          <span className="absolute left-0 top-full mt-1 whitespace-nowrap text-[10px] text-red-600">
+            {error}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  const display = value != null && value > 0 ? formatNumber(value) : "-";
+  return (
+    <span className="flex items-center gap-1 text-slate-700">
+      <span>{display}</span>
+      {canEdit ? (
+        <button
+          type="button"
+          onClick={startEdit}
+          aria-label="Edit value"
+          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        >
+          <Pencil className="h-3 w-3" aria-hidden />
+        </button>
+      ) : null}
+    </span>
   );
 }

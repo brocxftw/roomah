@@ -55,6 +55,18 @@ def _ensure_owned_private_template(template: dict[str, Any], user: dict[str, Any
         )
 
 
+def _ensure_template_deletable(template: dict[str, Any], user: dict[str, Any]) -> None:
+    """Starter templates are global; only managers can delete them."""
+    if template.get("is_starter"):
+        if user["role"] != "MANAGER":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only managers can delete starter templates",
+            )
+        return
+    _ensure_owned_private_template(template, user)
+
+
 @router.get("")
 def list_templates(
     auth: AuthContext = Depends(get_auth_context),
@@ -132,7 +144,7 @@ def delete_template(
 ) -> Response:
     user = get_current_user_record(auth)
     template = _get_visible_template(template_id=template_id, user=user)
-    _ensure_owned_private_template(template, user)
+    _ensure_template_deletable(template, user)
     get_service_supabase().table("campaign_content_templates").delete().eq(
         "id",
         str(template_id),

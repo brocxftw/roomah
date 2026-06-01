@@ -861,7 +861,7 @@ export default function PropertiesPage() {
                     <option value="Inactive">Inactive</option>
                   </select>
                   <Link
-                    href={`/app/campaigns/templates?property=${selectedProperty.id}`}
+                    href={`/app/campaigns/new?property=${selectedProperty.id}`}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   >
                     <Copy className="h-4 w-4" />

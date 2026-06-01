@@ -634,14 +634,32 @@ def test_campaign_external_url_create_update_list_and_detail(monkeypatch) -> Non
     assert updated["external_url"] == "https://www.threads.net/@roomah/post/456"
 
 
-def test_campaign_external_url_must_be_https() -> None:
+def test_campaign_external_url_normalises_user_input() -> None:
     # Unit-level validation test: URL validation is a pure model concern.
-    with pytest.raises(ValueError, match="external_url must be an HTTPS URL"):
+    # Bare hostnames get auto-prefixed with https:// so common copy/paste flows
+    # don't trip a 422; http URLs are accepted as-is.
+    bare = campaign_routes.MarketingCampaignCreate(
+        name="Bare Hostname",
+        channel=CampaignChannel.FACEBOOK,
+        campaign_start_date=datetime.now(UTC).date(),
+        external_url="facebook.com/roomah/posts/1",
+    )
+    assert bare.external_url == "https://facebook.com/roomah/posts/1"
+
+    http_link = campaign_routes.MarketingCampaignCreate(
+        name="Plain HTTP",
+        channel=CampaignChannel.FACEBOOK,
+        campaign_start_date=datetime.now(UTC).date(),
+        external_url="http://example.com/campaign",
+    )
+    assert http_link.external_url == "http://example.com/campaign"
+
+    with pytest.raises(ValueError, match="external_url must be an http"):
         campaign_routes.MarketingCampaignCreate(
-            name="Invalid Link Campaign",
+            name="Bad Scheme",
             channel=CampaignChannel.FACEBOOK,
             campaign_start_date=datetime.now(UTC).date(),
-            external_url="http://example.com/campaign",
+            external_url="ftp://example.com/campaign",
         )
 
 
@@ -805,7 +823,7 @@ def test_lost_cascade_does_not_touch_other_lead_campaign_counters(
     closing_campaign = campaign_routes.create_campaign(
         payload=campaign_routes.MarketingCampaignCreate(
             name="Closing Campaign",
-            channel=CampaignChannel.GOOGLE,
+            channel=CampaignChannel.OTHERS,
             campaign_start_date=datetime.now(UTC).date(),
         ),
         auth=auth,
@@ -1312,7 +1330,7 @@ def test_list_leads_filters_by_campaign(monkeypatch) -> None:
     target_campaign = campaign_routes.create_campaign(
         payload=campaign_routes.MarketingCampaignCreate(
             name="Target Campaign",
-            channel=CampaignChannel.GOOGLE,
+            channel=CampaignChannel.OTHERS,
             campaign_start_date=datetime.now(UTC).date(),
         ),
         auth=auth,
@@ -1360,7 +1378,7 @@ def test_delete_lead_removes_record_and_attribution(monkeypatch) -> None:
     campaign = campaign_routes.create_campaign(
         payload=campaign_routes.MarketingCampaignCreate(
             name="Spring Push",
-            channel=CampaignChannel.GOOGLE,
+            channel=CampaignChannel.OTHERS,
             campaign_start_date=datetime.now(UTC).date(),
         ),
         auth=auth,

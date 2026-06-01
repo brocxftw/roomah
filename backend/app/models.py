@@ -37,13 +37,12 @@ class ListingType(StrEnum):
 
 class CampaignChannel(StrEnum):
     FACEBOOK = "Facebook"
-    INSTAGRAM = "Instagram"
-    GOOGLE = "Google"
+    WHATSAPP = "WhatsApp"
     TIKTOK = "TikTok"
-    EMAIL = "Email"
-    REFERRAL = "Referral"
-    WALK_IN = "Walk_In"
-    OTHER = "Other"
+    THREADS = "Threads"
+    INSTAGRAM = "Instagram"
+    MUDAH_MY = "Mudah.my"
+    OTHERS = "Others"
 
 
 class CampaignStatus(StrEnum):
@@ -111,12 +110,23 @@ class RoomahModel(BaseModel):
 
 
 def validate_https_url(value: str | None) -> str | None:
+    """Normalise a user-pasted URL.
+
+    Accepts ``http`` and ``https`` for convenience. Bare hostnames (e.g.
+    ``facebook.com/post/123``) are auto-prefixed with ``https://`` so the most
+    common copy/paste flow doesn't trip a 422.
+    """
     if value is None:
         return None
-    parsed = urlparse(value)
-    if parsed.scheme != "https" or not parsed.netloc:
-        raise ValueError("external_url must be an HTTPS URL")
-    return value
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    if "://" not in trimmed:
+        trimmed = f"https://{trimmed}"
+    parsed = urlparse(trimmed)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("external_url must be an http(s) URL")
+    return trimmed
 
 
 class Team(RoomahModel):
@@ -171,6 +181,7 @@ class MarketingCampaign(RoomahModel):
     team_id: UUID
     name: str
     channel: CampaignChannel
+    channel_other_label: str | None = None
     status: CampaignStatus
     campaign_start_date: date
     campaign_end_date: date | None = None
@@ -195,9 +206,30 @@ class MarketingCampaignSummary(RoomahModel):
     status: CampaignStatus
 
 
+def _validate_channel_other_label(
+    channel: CampaignChannel | None,
+    label: str | None,
+) -> str | None:
+    """``channel_other_label`` is only valid when ``channel`` is ``Others``.
+
+    Trims whitespace and rejects empty/whitespace-only labels.
+    """
+    if label is None:
+        return None
+    trimmed = label.strip()
+    if not trimmed:
+        return None
+    if channel is not None and channel is not CampaignChannel.OTHERS:
+        raise ValueError(
+            "channel_other_label can only be set when channel is 'Others'"
+        )
+    return trimmed
+
+
 class MarketingCampaignCreate(RoomahModel):
     name: str = Field(min_length=1)
     channel: CampaignChannel
+    channel_other_label: str | None = None
     campaign_start_date: date
     campaign_end_date: date | None = None
     ad_spending: Decimal = Field(default=Decimal("0"), ge=0)
@@ -205,11 +237,24 @@ class MarketingCampaignCreate(RoomahModel):
     clicks: int = Field(default=0, ge=0)
     budget: Decimal | None = Field(default=None, ge=0)
     external_url: str | None = None
+    # Optional creation status. Limited to Draft / Active so the Save-vs-Save-as-
+    # draft split in the UI is honoured without exposing manager-only states
+    # like Completed.
+    status: CampaignStatus | None = None
 
     @field_validator("external_url")
     @classmethod
     def validate_external_url(cls, value: str | None) -> str | None:
         return validate_https_url(value)
+
+    @field_validator("status")
+    @classmethod
+    def validate_create_status(cls, value: CampaignStatus | None) -> CampaignStatus | None:
+        if value is None:
+            return None
+        if value not in {CampaignStatus.DRAFT, CampaignStatus.ACTIVE}:
+            raise ValueError("status on create must be Draft or Active")
+        return value
 
     @model_validator(mode="after")
     def validate_campaign_metrics(self) -> "MarketingCampaignCreate":
@@ -219,12 +264,16 @@ class MarketingCampaignCreate(RoomahModel):
             raise ValueError("campaign_end_date must be after campaign_start_date")
         if self.clicks > self.impressions:
             raise ValueError("clicks must be less than or equal to impressions")
+        self.channel_other_label = _validate_channel_other_label(
+            self.channel, self.channel_other_label
+        )
         return self
 
 
 class MarketingCampaignUpdate(RoomahModel):
     name: str | None = Field(default=None, min_length=1)
     channel: CampaignChannel | None = None
+    channel_other_label: str | None = None
     status: CampaignStatus | None = None
     campaign_start_date: date | None = None
     campaign_end_date: date | None = None
@@ -253,6 +302,9 @@ class MarketingCampaignUpdate(RoomahModel):
             and self.clicks > self.impressions
         ):
             raise ValueError("clicks must be less than or equal to impressions")
+        self.channel_other_label = _validate_channel_other_label(
+            self.channel, self.channel_other_label
+        )
         return self
 
 

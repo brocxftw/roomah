@@ -134,13 +134,12 @@ const LEAD_STATUSES = [
 
 const CAMPAIGN_CHANNELS = [
   "Facebook",
-  "Instagram",
-  "Google",
+  "WhatsApp",
   "TikTok",
-  "Email",
-  "Referral",
-  "Walk_In",
-  "Other",
+  "Threads",
+  "Instagram",
+  "Mudah.my",
+  "Others",
 ];
 
 const DRAWER_TABS = ["details", "timeline", "properties"] as const;

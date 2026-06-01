@@ -83,6 +83,26 @@ class CampaignCountersService:
             {"conversions": int(campaign["conversions"]) + 1}
         ).eq("id", str(campaign_id)).execute()
 
+    def decrement_conversion(self, campaign_id: UUID | str | None) -> None:
+        """Roll back a previously-incremented conversion (e.g. on reopen)."""
+        if campaign_id is None:
+            return
+
+        campaign = (
+            self.supabase.table("marketing_campaigns")
+            .select("id,conversions")
+            .eq("id", str(campaign_id))
+            .single()
+            .execute()
+            .data
+        )
+        if not campaign:
+            return
+
+        self.supabase.table("marketing_campaigns").update(
+            {"conversions": max(int(campaign["conversions"]) - 1, 0)}
+        ).eq("id", str(campaign_id)).execute()
+
     def swap_conversion(
         self,
         *,

@@ -308,6 +308,7 @@ class FakeSupabase:
             "lead_properties": [],
             "viewings": [],
             "deals": [],
+            "deal_documents": [],
             "marketing_campaigns": [],
             "campaign_content_templates": [],
             "timeline_events": [],
@@ -456,6 +457,11 @@ def test_full_happy_path_cascades_and_writes_timeline(monkeypatch) -> None:
         ),
         auth=auth,
     )
+    deal = deal_routes.win_deal(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealWin(sale_price=Decimal("500000")),
+        auth=auth,
+    )
 
     assert completed["status"] == "completed"
     assert deal["commission_total"] == "7000.00"
@@ -469,6 +475,267 @@ def test_full_happy_path_cascades_and_writes_timeline(monkeypatch) -> None:
         TimelineEventType.DEAL_CLOSED.value,
         TimelineEventType.LEAD_STATUS_CHANGED.value,
     }
+
+
+def test_open_deal_creation_starts_negotiation_without_terminal_cascade(
+    monkeypatch,
+) -> None:
+    # Integration-style route test: deal creation spans validation,
+    # commission defaults, fake persistence, and lead/property side effects.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+    viewing_routes.complete_viewing(
+        viewing_id=viewing["id"],
+        payload=viewing_routes.ViewingComplete(interest_level=5, notes="Ready"),
+        auth=auth,
+    )
+
+    deal = deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+            expected_close_date=datetime.now(UTC).date(),
+            probability_override=Decimal("65"),
+            notes="Start negotiation",
+            origin_viewing_id=UUID(viewing["id"]),
+        ),
+        auth=auth,
+    )
+
+    assert deal["stage"] == "negotiation"
+    assert deal["origin_viewing_id"] == viewing["id"]
+    assert deal["closed_at"] is None
+    assert deal["effective_probability"] == 65.0
+    assert deal["projected_commission"] == "7000.00"
+    assert supabase.tables["leads"][0]["status"] != LeadStatus.WON.value
+    assert supabase.tables["properties"][0]["status"] == PropertyStatus.ACTIVE.value
+    assert TimelineEventType.DEAL_CREATED.value in {
+        event["event_type"] for event in supabase.tables["timeline_events"]
+    }
+
+
+def test_legacy_deal_without_stage_is_hydrated_as_closed_won(monkeypatch) -> None:
+    # Integration-style route test: existing rows are backfilled by migration in
+    # production, and route hydration still treats legacy in-memory fixtures as won.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, _viewing = create_lead_property_link_viewing(supabase, auth)
+    supabase.tables["deals"].append(
+        {
+            "id": str(uuid4()),
+            "team_id": TEAM_ID,
+            "lead_id": lead["id"],
+            "property_id": property_row["id"],
+            "ren_id": REN_ID,
+            "sale_price": "500000",
+            "commission_rate": "0.02",
+            "agency_fee": "1000",
+            "lawyer_fees": "2000",
+            "commission_total": "7000",
+            "commission_override": None,
+            "closed_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+    deals = deal_routes.list_deals(auth=auth)
+
+    assert deals[0]["stage"] == "closed_won"
+    assert deals[0]["effective_probability"] == 100.0
+
+
+def test_win_deal_runs_terminal_cascade_and_emits_events(monkeypatch) -> None:
+    # Integration-style route test: winning a deal is the terminal business
+    # transaction that coordinates deal, lead, property, campaign and timeline.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, _viewing = create_lead_property_link_viewing(supabase, auth)
+    deal = deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    won = deal_routes.win_deal(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealWin(
+            sale_price=Decimal("510000"),
+            agency_fee=Decimal("1000"),
+            lawyer_fees=Decimal("2000"),
+        ),
+        auth=auth,
+    )
+
+    assert won["stage"] == "closed_won"
+    assert won["closed_at"]
+    assert won["commission_total"] == "7200.00"
+    assert supabase.tables["leads"][0]["status"] == LeadStatus.WON.value
+    assert supabase.tables["properties"][0]["status"] == "Inactive"
+    event_types = {event["event_type"] for event in supabase.tables["timeline_events"]}
+    assert TimelineEventType.DEAL_WON.value in event_types
+    assert TimelineEventType.LEAD_STATUS_CHANGED.value in event_types
+
+
+def test_lose_deal_requires_reason_and_records_loss(monkeypatch) -> None:
+    # Integration-style route test: losing a deal validates structured reasons,
+    # writes loss metadata, and avoids the win cascade.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, _viewing = create_lead_property_link_viewing(supabase, auth)
+    deal = deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    with pytest.raises(ValueError):
+        deal_routes.DealLose(lost_reason="invalid")  # type: ignore[arg-type]
+
+    lost = deal_routes.lose_deal(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealLose(
+            lost_reason="financing_denied",
+            lost_notes="Loan rejected",
+        ),
+        auth=auth,
+    )
+
+    assert lost["stage"] == "closed_lost"
+    assert lost["lost_reason"] == "financing_denied"
+    assert lost["lost_at"]
+    assert supabase.tables["properties"][0]["status"] == PropertyStatus.ACTIVE.value
+    assert TimelineEventType.DEAL_LOST.value in {
+        event["event_type"] for event in supabase.tables["timeline_events"]
+    }
+
+
+def test_deal_stage_probability_hydration_and_documents(monkeypatch) -> None:
+    # Integration-style route test: the Deals workspace depends on stage
+    # updates, effective probability, hydration, filtering and document links.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+    viewing_routes.complete_viewing(
+        viewing_id=viewing["id"],
+        payload=viewing_routes.ViewingComplete(interest_level=5, notes="Hot"),
+        auth=auth,
+    )
+    deal = deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+            origin_viewing_id=UUID(viewing["id"]),
+        ),
+        auth=auth,
+    )
+
+    moved = deal_routes.update_deal_stage(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealStageUpdate(stage="offer_made"),
+        auth=auth,
+    )
+    assert moved["stage"] == "offer_made"
+    assert moved["effective_probability"] == 50.0
+
+    updated = deal_routes.update_deal(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealUpdate(probability_override=Decimal("80"), notes="Strong"),
+        auth=auth,
+    )
+    assert updated["effective_probability"] == 80.0
+    assert updated["notes"] == "Strong"
+
+    document = deal_routes.create_deal_document(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealDocumentCreate(
+            label="Offer letter",
+            url="https://example.com/offer.pdf",
+            kind="offer",
+        ),
+        auth=auth,
+    )
+    assert document["label"] == "Offer letter"
+
+    listed = deal_routes.list_deals(q="buyer", stage="offer_made", auth=auth)
+    assert len(listed) == 1
+    assert listed[0]["lead"]["name"] == "Buyer One"
+    assert listed[0]["property"]["name"] == "KL Condo"
+    assert listed[0]["origin_viewing"]["interest_level"] == 5
+    assert listed[0]["document_count"] == 1
+
+    detail = deal_routes.get_deal(deal_id=UUID(deal["id"]), auth=auth)
+    assert detail["documents"][0]["url"] == "https://example.com/offer.pdf"
+    assert any(
+        event["event_type"] == TimelineEventType.VIEWING_COMPLETED.value
+        for event in detail["timeline"]
+    )
+
+    with pytest.raises(HTTPException):
+        deal_routes.update_deal_stage(
+            deal_id=UUID(deal["id"]),
+            payload=deal_routes.DealStageUpdate(stage="closed_won"),
+            auth=auth,
+        )
+
+    deleted = deal_routes.delete_deal_document(
+        deal_id=UUID(deal["id"]),
+        document_id=UUID(document["id"]),
+        auth=auth,
+    )
+    assert deleted["deleted"] is True
+    assert supabase.tables["deal_documents"] == []
+
+
+def test_viewing_origin_deal_creation_prevents_duplicate_active_deals(
+    monkeypatch,
+) -> None:
+    # Integration-style route test: duplicate prevention depends on persisted
+    # viewing-origin metadata and route-level validation.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+    viewing_routes.complete_viewing(
+        viewing_id=viewing["id"],
+        payload=viewing_routes.ViewingComplete(interest_level=5),
+        auth=auth,
+    )
+    deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+            origin_viewing_id=UUID(viewing["id"]),
+        ),
+        auth=auth,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        deal_routes.create_deal(
+            payload=deal_routes.DealCreate(
+                lead_id=lead["id"],
+                property_id=property_row["id"],
+                sale_price=Decimal("500000"),
+                origin_viewing_id=UUID(viewing["id"]),
+            ),
+            auth=auth,
+        )
+
+    assert exc_info.value.status_code == 409
 
 
 def test_viewing_workspace_list_and_detail_are_hydrated_and_filterable(
@@ -690,12 +957,17 @@ def test_property_cascade_marks_other_leads_lost_and_revive_is_allowed(
         auth=auth,
     )
 
-    deal_routes.create_deal(
+    deal = deal_routes.create_deal(
         payload=deal_routes.DealCreate(
             lead_id=closing_lead["id"],
             property_id=property_row["id"],
             sale_price=Decimal("500000"),
         ),
+        auth=auth,
+    )
+    deal_routes.win_deal(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealWin(sale_price=Decimal("500000")),
         auth=auth,
     )
 
@@ -770,12 +1042,17 @@ def test_campaign_attribution_counters_and_deal_conversion(monkeypatch) -> None:
         payload=lead_routes.LeadPropertyLinkCreate(property_id=property_row["id"]),
         auth=auth,
     )
-    deal_routes.create_deal(
+    deal = deal_routes.create_deal(
         payload=deal_routes.DealCreate(
             lead_id=lead["id"],
             property_id=property_row["id"],
             sale_price=Decimal("500000"),
         ),
+        auth=auth,
+    )
+    deal_routes.win_deal(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealWin(sale_price=Decimal("500000")),
         auth=auth,
     )
 
@@ -1057,12 +1334,17 @@ def test_lost_cascade_does_not_touch_other_lead_campaign_counters(
         auth=auth,
     )
 
-    deal_routes.create_deal(
+    deal = deal_routes.create_deal(
         payload=deal_routes.DealCreate(
             lead_id=closing_lead["id"],
             property_id=property_row["id"],
             sale_price=Decimal("500000"),
         ),
+        auth=auth,
+    )
+    deal_routes.win_deal(
+        deal_id=UUID(deal["id"]),
+        payload=deal_routes.DealWin(sale_price=Decimal("500000")),
         auth=auth,
     )
 
@@ -1802,6 +2084,7 @@ def test_dashboard_returns_six_stage_pipeline_funnel_with_values(
                     "lawyer_fees": "2000",
                     "commission_total": "7000",
                     "commission_override": None,
+                        "stage": "closed_won",
                     "closed_at": now,
                     "created_at": now,
                 }

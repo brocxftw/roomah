@@ -127,13 +127,19 @@ def _converted_deals_by_viewing(
         .execute()
         .data
     )
+    deals_by_origin = {
+        deal["origin_viewing_id"]: deal
+        for deal in deals
+        if deal.get("origin_viewing_id")
+    }
     deals_by_pair = {
         (deal["lead_id"], deal["property_id"]): deal
         for deal in deals
         if deal.get("lead_id") and deal.get("property_id")
     }
     return {
-        viewing["id"]: deals_by_pair.get((viewing["lead_id"], viewing["property_id"]))
+        viewing["id"]: deals_by_origin.get(viewing["id"])
+        or deals_by_pair.get((viewing["lead_id"], viewing["property_id"]))
         for viewing in viewings
     }
 
@@ -178,6 +184,7 @@ def _deal_summary(deal: dict[str, Any] | None) -> dict[str, Any] | None:
         "id": deal["id"],
         "sale_price": deal.get("sale_price"),
         "commission_total": deal.get("commission_total"),
+        "stage": deal.get("stage"),
         "closed_at": deal.get("closed_at"),
         "created_at": deal.get("created_at"),
     }

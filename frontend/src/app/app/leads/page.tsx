@@ -19,6 +19,7 @@ import {
   Unlink,
   UserPlus,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -1104,9 +1105,10 @@ function LeadDrawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border px-2 py-1 text-sm"
+                aria-label="Close drawer"
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
               >
-                Close
+                <X className="h-4 w-4" aria-hidden />
               </button>
             </div>
             <div className="mt-4 flex items-center gap-2">

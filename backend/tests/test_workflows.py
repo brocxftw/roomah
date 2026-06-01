@@ -471,6 +471,200 @@ def test_full_happy_path_cascades_and_writes_timeline(monkeypatch) -> None:
     }
 
 
+def test_viewing_workspace_list_and_detail_are_hydrated_and_filterable(
+    monkeypatch,
+) -> None:
+    # Integration-style route test: the workspace depends on real route,
+    # filtering, fake persistence, and enrichment behavior working together.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+    other_lead = lead_routes.create_lead(
+        payload=lead_routes.LeadCreate(
+            name="Other Buyer",
+            phone="60111111111",
+            email="otherbuyer@example.com",
+        ),
+        auth=auth,
+    )
+    other_property = property_routes.create_property(
+        payload=property_routes.PropertyCreate(
+            name="Terrace House",
+            type="Terrace",
+            **property_required_fields(city="Subang Jaya", postcode="47500"),
+            listing_price=Decimal("650000"),
+        ),
+        auth=auth,
+    )
+    viewing_routes.create_viewing(
+        payload=viewing_routes.ViewingCreate(
+            lead_id=other_lead["id"],
+            property_id=other_property["id"],
+            assigned_ren_id=REN_ID,
+            scheduled_at=datetime.now(UTC) + timedelta(days=3),
+        ),
+        auth=auth,
+    )
+
+    listed = viewing_routes.list_viewings(
+        q="buyer one",
+        status_filter="scheduled",
+        property_type="Condo",
+        date_from=datetime.now(UTC) - timedelta(days=1),
+        date_to=datetime.now(UTC) + timedelta(days=1),
+        auth=auth,
+    )
+    detail = viewing_routes.get_viewing(viewing_id=UUID(viewing["id"]), auth=auth)
+
+    assert [row["id"] for row in listed] == [viewing["id"]]
+    assert listed[0]["lead"]["name"] == lead["name"]
+    assert listed[0]["property"]["name"] == property_row["name"]
+    assert listed[0]["property"]["type"] == "Condo"
+    assert listed[0]["assigned_ren"]["full_name"] == "ren"
+    assert detail["lead"]["email"] == "buyer@example.com"
+    assert detail["property"]["listing_type"] == "Sale"
+    assert detail["converted_deal"] is None
+
+
+def test_viewing_completion_persists_follow_up_workflow(monkeypatch) -> None:
+    # Integration-style route test: completion must persist the same follow-up
+    # fields the workspace reads, not just return a transient suggestion.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    _lead, _property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+
+    completed = viewing_routes.complete_viewing(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingComplete(
+            interest_level=3,
+            notes="Very interested",
+        ),
+        auth=auth,
+    )
+
+    assert completed["status"] == "completed"
+    assert completed["follow_up_status"] == "pending"
+    assert completed["follow_up_at"] == completed["suggested_follow_up_at"]
+    assert supabase.tables["viewings"][0]["follow_up_status"] == "pending"
+    assert supabase.tables["viewings"][0]["follow_up_at"] == completed["follow_up_at"]
+
+
+def test_viewing_cancel_reschedule_and_follow_up_updates(monkeypatch) -> None:
+    # Integration-style route test: route payload validation, authorization, and
+    # fake persistence cover the operational drawer actions together.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    _lead, _property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+    next_slot = datetime.now(UTC) + timedelta(days=2)
+
+    rescheduled = viewing_routes.reschedule_viewing(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingReschedule(scheduled_at=next_slot),
+        auth=auth,
+    )
+    completed = viewing_routes.complete_viewing(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingComplete(interest_level=2),
+        auth=auth,
+    )
+    follow_up_slot = datetime.now(UTC) + timedelta(days=4)
+    follow_up = viewing_routes.update_viewing_follow_up(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingFollowUpUpdate(
+            follow_up_at=follow_up_slot,
+            follow_up_status="done",
+        ),
+        auth=auth,
+    )
+    cancelled = viewing_routes.cancel_viewing(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingCancel(
+            cancellation_reason="no_show",
+            cancellation_notes="Lead did not arrive",
+        ),
+        auth=auth,
+    )
+
+    assert rescheduled["scheduled_at"] == next_slot.isoformat()
+    assert completed["follow_up_status"] == "pending"
+    assert follow_up["follow_up_status"] == "done"
+    assert follow_up["follow_up_at"] == follow_up_slot.isoformat()
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["cancellation_reason"] == "no_show"
+    assert cancelled["cancellation_notes"] == "Lead did not arrive"
+    assert cancelled["cancelled_at"] is not None
+
+
+def test_viewing_completion_accepts_five_star_interest(monkeypatch) -> None:
+    # Integration-style route test: the API must accept the extended 1-5
+    # interest scale used by the drawer's editable interest card.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    _lead, _property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+
+    completed = viewing_routes.complete_viewing(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingComplete(interest_level=5),
+        auth=auth,
+    )
+
+    assert completed["interest_level"] == 5
+    assert supabase.tables["viewings"][0]["interest_level"] == 5
+
+    with pytest.raises(ValueError):
+        viewing_routes.ViewingComplete(interest_level=6)
+
+
+def test_viewing_interest_update_endpoint(monkeypatch) -> None:
+    # Integration-style route test: agents must be able to edit the captured
+    # interest level after completion without reopening the completion form.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    _lead, _property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+    viewing_routes.complete_viewing(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingComplete(interest_level=2),
+        auth=auth,
+    )
+
+    updated = viewing_routes.update_viewing_interest(
+        viewing_id=UUID(viewing["id"]),
+        payload=viewing_routes.ViewingInterestUpdate(interest_level=4, notes="Hot lead"),
+        auth=auth,
+    )
+
+    assert updated["interest_level"] == 4
+    assert updated["notes"] == "Hot lead"
+    assert supabase.tables["viewings"][0]["interest_level"] == 4
+
+
+def test_viewing_detail_includes_conversion_context(monkeypatch) -> None:
+    # Integration-style route test: conversion context is inferred from actual
+    # deal records so the Viewings drawer can reflect progress after conversion.
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    lead, property_row, viewing = create_lead_property_link_viewing(supabase, auth)
+    deal = deal_routes.create_deal(
+        payload=deal_routes.DealCreate(
+            lead_id=lead["id"],
+            property_id=property_row["id"],
+            sale_price=Decimal("500000"),
+        ),
+        auth=auth,
+    )
+
+    detail = viewing_routes.get_viewing(viewing_id=UUID(viewing["id"]), auth=auth)
+
+    assert detail["converted_deal"]["id"] == deal["id"]
+    assert detail["converted_deal"]["sale_price"] == "500000"
+
+
 def test_property_cascade_marks_other_leads_lost_and_revive_is_allowed(
     monkeypatch,
 ) -> None:

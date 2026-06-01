@@ -1,0 +1,530 @@
+{
+    "design_system_name": "ROOMAH CRM - Deal Pipeline Workspace",
+  
+    "design_style": {
+      "category": "Modern SaaS CRM",
+      "subtype": "Sales Pipeline Management Workspace",
+      "personality": [
+        "Professional",
+        "Revenue-focused",
+        "Operational",
+        "Executive-friendly",
+        "Action-oriented",
+        "Pipeline-driven"
+      ],
+      "visual_characteristics": [
+        "Kanban-first workspace",
+        "Master-detail architecture",
+        "Card-based information hierarchy",
+        "High information density",
+        "Minimal shadows",
+        "Soft borders",
+        "Pipeline visualisation before tables",
+        "Revenue-centric KPIs",
+        "Persistent contextual drawer"
+      ]
+    },
+  
+    "page_archetype": {
+      "type": "Pipeline + Table + Detail Workspace",
+      "purpose": "Allow agents to manage deals from negotiation to closure without leaving a single operational workspace.",
+      "interaction_model": "Review Pipeline → Move Deal Stage → Analyse Deal → Take Action"
+    },
+  
+    "design_philosophy": {
+      "primary_goal": "Make the deal pipeline the centre of the sales workflow.",
+  
+      "ux_principles": [
+        "Pipeline visibility before reporting.",
+        "Revenue metrics before activity metrics.",
+        "Drag-and-drop progression should feel natural.",
+        "Users should understand deal health at a glance.",
+        "Deal actions should always be accessible.",
+        "The pipeline should act as the primary workspace."
+      ]
+    },
+  
+    "layout": {
+      "type": "Three-Panel CRM Workspace",
+  
+      "left_panel": {
+        "role": "Global Navigation",
+        "width": "240-260px",
+        "fixed": true
+      },
+  
+      "center_panel": {
+        "role": "Pipeline Workspace",
+        "width": "fluid",
+        "priority": "highest"
+      },
+  
+      "right_panel": {
+        "role": "Deal Command Drawer",
+        "width": "340-380px",
+        "fixed": true,
+        "sticky": true
+      }
+    },
+  
+    "color_system": {
+      "navigation": {
+        "background": "#0B1F3A",
+        "gradient": true,
+        "active_item": "#00D4FF",
+        "text": "#FFFFFF"
+      },
+  
+      "content": {
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "border": "#E5E7EB"
+      },
+  
+      "text": {
+        "primary": "#111827",
+        "secondary": "#6B7280",
+        "muted": "#9CA3AF"
+      },
+  
+      "pipeline": {
+        "early_stage": "#06B6D4",
+        "mid_stage": "#3B82F6",
+        "approval_stage": "#6366F1",
+        "won_stage": "#22C55E",
+        "lost_stage": "#9CA3AF"
+      }
+    },
+  
+    "spacing_system": {
+      "base_unit": 8,
+      "page_padding": 24,
+      "section_gap": 20,
+      "card_padding": 20,
+      "column_gap": 16,
+      "border_radius": 12
+    },
+  
+    "typography": {
+      "font_family": "Inter",
+  
+      "hierarchy": {
+        "page_title": {
+          "size": "32px",
+          "weight": 700
+        },
+  
+        "section_title": {
+          "size": "18px",
+          "weight": 600
+        },
+  
+        "metric": {
+          "size": "28px",
+          "weight": 700
+        },
+  
+        "body": {
+          "size": "14px"
+        },
+  
+        "caption": {
+          "size": "12px"
+        }
+      }
+    },
+  
+    "page_structure": {
+      "header": {
+        "layout": "horizontal",
+  
+        "left": [
+          "page_title",
+          "page_description"
+        ],
+  
+        "right": [
+          "view_toggle",
+          "primary_action"
+        ]
+      },
+  
+      "content_flow": [
+        "deal_summary_metrics",
+        "pipeline_workspace",
+        "filter_bar",
+        "deal_table"
+      ]
+    },
+  
+    "view_toggle": {
+      "purpose": "Switch between pipeline and tabular management",
+  
+      "style": {
+        "segmented_control": true
+      },
+  
+      "options": [
+        "pipeline_view",
+        "list_view"
+      ]
+    },
+  
+    "summary_metrics": {
+      "purpose": "Revenue and deal performance overview",
+  
+      "layout": {
+        "type": "horizontal_metric_grid",
+        "cards_per_row": 4
+      },
+  
+      "card_structure": {
+        "icon": "left",
+        "metric": "primary_focus",
+        "secondary_value": true,
+        "trend_indicator": true
+      },
+  
+      "guidelines": [
+        "Focus on monetary metrics.",
+        "Keep visualisation minimal.",
+        "Use concise trend indicators.",
+        "Avoid large charts."
+      ]
+    },
+  
+    "pipeline_workspace": {
+      "role": "Primary Deal Management Area",
+  
+      "layout": {
+        "type": "horizontal_kanban_board",
+        "scrollable": true
+      },
+  
+      "pipeline_columns": {
+        "display": [
+          "early_stage",
+          "qualification_stage",
+          "negotiation_stage",
+          "approval_stage",
+          "won_stage",
+          "lost_stage"
+        ],
+  
+        "column_structure": {
+          "header": {
+            "stage_name": true,
+            "deal_count": true,
+            "stage_value": true
+          },
+  
+          "body": {
+            "deal_cards": true
+          },
+  
+          "footer": {
+            "quick_add": true
+          }
+        }
+      }
+    },
+  
+    "deal_cards": {
+      "purpose": "Represent individual opportunities",
+  
+      "style": {
+        "compact": true,
+        "draggable": true,
+        "clickable": true
+      },
+  
+      "structure": [
+        "primary_title",
+        "secondary_metadata",
+        "deal_value",
+        "owner_summary"
+      ],
+  
+      "interaction": {
+        "drag_and_drop": true,
+        "drawer_update": true
+      }
+    },
+  
+    "pipeline_design_rules": {
+      "requirements": [
+        "Columns should have visual stage identity.",
+        "Drag-and-drop should feel native.",
+        "Cards should be lightweight and scannable.",
+        "Column headers should communicate stage health.",
+        "Won and Lost stages should be visually distinct."
+      ]
+    },
+  
+    "filter_bar": {
+      "purpose": "Deal discovery and segmentation",
+  
+      "layout": {
+        "single_row": true,
+        "contained_card": true
+      },
+  
+      "components": [
+        "search",
+        "owner_filter",
+        "stage_filter",
+        "property_type_filter",
+        "closing_date_filter",
+        "advanced_filters",
+        "export"
+      ]
+    },
+  
+    "deal_table": {
+      "role": "Structured deal analysis",
+  
+      "style": {
+        "sticky_header": true,
+        "hover_state": true,
+        "selected_row": true,
+        "minimal_borders": true
+      },
+  
+      "layout": {
+        "pagination": true,
+        "full_width": true
+      },
+  
+      "column_groups": {
+  
+        "identity": {
+          "contains": [
+            "deal_reference",
+            "lead_information"
+          ]
+        },
+  
+        "property": {
+          "contains": [
+            "thumbnail",
+            "property_summary"
+          ]
+        },
+  
+        "ownership": {
+          "contains": [
+            "deal_owner"
+          ]
+        },
+  
+        "stage": {
+          "badge": true
+        },
+  
+        "financial": {
+          "contains": [
+            "deal_value",
+            "commission_value"
+          ]
+        },
+  
+        "timeline": {
+          "contains": [
+            "closing_date",
+            "last_activity"
+          ]
+        },
+  
+        "actions": {
+          "quick_action_icon": true,
+          "overflow_menu": true
+        }
+      }
+    },
+  
+    "right_drawer": {
+      "role": "Deal Command Centre",
+  
+      "structure": [
+        "deal_header",
+        "deal_summary",
+        "tab_navigation",
+        "insight_cards",
+        "action_footer"
+      ]
+    },
+  
+    "deal_header": {
+      "contains": [
+        "deal_identifier",
+        "stage_badge",
+        "drawer_actions"
+      ]
+    },
+  
+    "deal_summary": {
+      "layout": "stacked_information",
+  
+      "sections": [
+        "property_summary",
+        "lead_summary",
+        "ownership_information",
+        "deal_metrics"
+      ]
+    },
+  
+    "deal_metrics": {
+      "contains": [
+        "deal_value",
+        "commission_estimate",
+        "closing_date",
+        "probability_score",
+        "recent_activity"
+      ]
+    },
+  
+    "probability_visualization": {
+      "style": "progress_bar",
+  
+      "purpose": "Represent likelihood of closing.",
+  
+      "requirements": [
+        "Simple visual indicator.",
+        "High visibility.",
+        "Easy comparison."
+      ]
+    },
+  
+    "drawer_tabs": {
+      "style": "underline_navigation",
+  
+      "tabs": [
+        "overview",
+        "commission",
+        "timeline",
+        "documents"
+      ]
+    },
+  
+    "insight_cards": {
+      "layout": "vertical_stack",
+  
+      "spacing": 16,
+  
+      "components": [
+        {
+          "type": "deal_notes"
+        },
+        {
+          "type": "commission_breakdown"
+        },
+        {
+          "type": "document_summary"
+        }
+      ]
+    },
+  
+    "commission_breakdown": {
+      "purpose": "Provide transparent earnings calculation",
+  
+      "layout": {
+        "key_value_structure": true
+      },
+  
+      "visual_emphasis": {
+        "net_commission": "high"
+      }
+    },
+  
+    "action_footer": {
+      "position": "bottom_of_drawer",
+  
+      "layout": {
+        "horizontal": true
+      },
+  
+      "actions": [
+        "edit_deal",
+        "mark_won",
+        "more_actions"
+      ]
+    },
+  
+    "cards": {
+      "background": "#FFFFFF",
+      "border": "1px solid #E5E7EB",
+      "radius": "12px",
+      "shadow": "minimal",
+      "padding": "20px"
+    },
+  
+    "badges": {
+      "style": "soft_filled",
+      "shape": "pill",
+  
+      "usage": [
+        "deal_stage",
+        "status",
+        "pipeline_state"
+      ]
+    },
+  
+    "component_patterns": {
+      "deals_module": {
+  
+        "always_include": [
+          "revenue_kpis",
+          "kanban_pipeline",
+          "filters",
+          "deal_table",
+          "deal_drawer"
+        ],
+  
+        "avoid": [
+          "separate_deal_pages",
+          "report_heavy_layouts",
+          "large_analytics_charts"
+        ]
+      }
+    },
+  
+    "interaction_rules": [
+      "Pipeline is the primary workspace.",
+      "Selecting a deal updates the drawer instantly.",
+      "Drag-and-drop updates deal stages.",
+      "Users should manage the entire deal lifecycle from one screen.",
+      "Commission visibility should remain prominent.",
+      "The drawer should function as a deal command centre.",
+      "Pipeline and table views should stay synchronised.",
+      "Won and Lost stages should update KPIs immediately."
+    ],
+  
+    "responsive_behavior": {
+      "desktop": {
+        "three_panel_layout": true
+      },
+  
+      "tablet": {
+        "drawer_collapsible": true,
+        "pipeline_horizontal_scroll": true
+      },
+  
+      "mobile": {
+        "pipeline_swipeable": true,
+        "drawer_bottom_sheet": true,
+        "single_column_layout": true
+      }
+    },
+  
+    "cursor_generation_rules": [
+      "Make the Kanban pipeline the hero component.",
+      "Revenue metrics should be prioritised over activity metrics.",
+      "Deal stages should be visually distinguishable.",
+      "Use drag-and-drop interactions where possible.",
+      "Present commission information prominently.",
+      "Keep all deal actions inside the drawer.",
+      "Avoid forcing navigation to separate deal pages.",
+      "Maintain ROOMAH design consistency with Leads, Properties, Campaigns and Viewings.",
+      "Optimise for pipeline management and deal conversion workflows."
+    ]
+  }

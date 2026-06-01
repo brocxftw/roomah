@@ -19,6 +19,7 @@ import {
   UserRound,
   UserX,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -27,7 +28,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type React from "react";
 import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { CloseDealModal } from "@/components/close-deal-modal";
+import { CreateDealModal, WinDealModal } from "@/components/close-deal-modal";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
 
@@ -72,6 +73,7 @@ type ConvertedDeal = {
   id: string;
   sale_price?: string | number | null;
   commission_total?: string | number | null;
+  stage?: string | null;
   closed_at?: string | null;
   created_at?: string | null;
 };
@@ -363,7 +365,8 @@ export default function ViewingsPage() {
   const [followUpDraft, setFollowUpDraft] = useState("");
   const [cancelReason, setCancelReason] = useState("lead_cancelled");
   const [cancelNotes, setCancelNotes] = useState("");
-  const [conversionOpen, setConversionOpen] = useState(false);
+  const [startDealOpen, setStartDealOpen] = useState(false);
+  const [closeNowOpen, setCloseNowOpen] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [savingInterest, setSavingInterest] = useState(false);
   const [interestSavedAt, setInterestSavedAt] = useState<number | null>(null);
@@ -1065,7 +1068,8 @@ export default function ViewingsPage() {
           onComplete={completeViewing}
           onFollowUpUpdate={updateFollowUp}
           onCancel={(overrides) => void cancelViewing(overrides)}
-          onConvert={() => setConversionOpen(true)}
+          onStartNegotiating={() => setStartDealOpen(true)}
+          onCloseNow={() => setCloseNowOpen(true)}
           onInterestChange={(level) => void updateInterest(level)}
           savingInterest={savingInterest}
           interestSavedAt={interestSavedAt}
@@ -1073,14 +1077,32 @@ export default function ViewingsPage() {
       ) : null}
 
       {conversionLead && selectedViewing ? (
-        <CloseDealModal
-          open={conversionOpen}
+        <CreateDealModal
+          open={startDealOpen}
           lead={conversionLead}
           propertyGroups={conversionPropertyGroups}
           preselectedPropertyId={selectedViewing.property_id}
-          onClose={() => setConversionOpen(false)}
+          originViewingId={selectedViewing.id}
+          initialNotes={selectedViewing.notes}
+          onClose={() => setStartDealOpen(false)}
           onComplete={async () => {
-            setConversionOpen(false);
+            setStartDealOpen(false);
+            await refreshWorkspace();
+          }}
+          getToken={getToken}
+        />
+      ) : null}
+
+      {conversionLead && selectedViewing ? (
+        <WinDealModal
+          open={closeNowOpen}
+          lead={conversionLead}
+          propertyGroups={conversionPropertyGroups}
+          preselectedPropertyId={selectedViewing.property_id}
+          originViewingId={selectedViewing.id}
+          onClose={() => setCloseNowOpen(false)}
+          onComplete={async () => {
+            setCloseNowOpen(false);
             await refreshWorkspace();
           }}
           getToken={getToken}
@@ -1437,7 +1459,8 @@ function ViewingDrawer({
   onComplete,
   onFollowUpUpdate,
   onCancel,
-  onConvert,
+  onStartNegotiating,
+  onCloseNow,
   onInterestChange,
   savingInterest,
   interestSavedAt,
@@ -1465,7 +1488,8 @@ function ViewingDrawer({
     notes?: string | null;
     confirmMessage?: string;
   }) => void;
-  onConvert: () => void;
+  onStartNegotiating: () => void;
+  onCloseNow: () => void;
   onInterestChange: (level: number) => void;
   savingInterest: boolean;
   interestSavedAt: number | null;
@@ -1513,9 +1537,10 @@ function ViewingDrawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border px-2 py-1 text-sm"
+                aria-label="Close drawer"
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
               >
-                Close
+                <X className="h-4 w-4" aria-hidden />
               </button>
             </div>
           </div>
@@ -1796,15 +1821,35 @@ function ViewingDrawer({
                 No-show
               </button>
             </div>
-            <button
-              type="button"
-              onClick={onConvert}
-              disabled={Boolean(viewing.converted_deal)}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:bg-slate-300"
-            >
-              <Handshake className="h-4 w-4" aria-hidden />
-              {viewing.converted_deal ? "Deal converted" : "Convert to deal"}
-            </button>
+            {viewing.converted_deal ? (
+              <div className="rounded-lg bg-slate-100 px-3 py-2 text-center text-sm font-medium text-slate-600">
+                Deal converted
+                {viewing.converted_deal.stage
+                  ? ` · ${titleCase(viewing.converted_deal.stage)}`
+                  : ""}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={onStartNegotiating}
+                  disabled={viewing.status !== "completed"}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:bg-slate-300"
+                >
+                  <Handshake className="h-4 w-4" aria-hidden />
+                  Start negotiating
+                </button>
+                <button
+                  type="button"
+                  onClick={onCloseNow}
+                  disabled={viewing.status !== "completed"}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-4 w-4" aria-hidden />
+                  Close now
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

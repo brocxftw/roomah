@@ -107,6 +107,9 @@ def get_dashboard(
             query = query.eq("ren_id", user["id"])
         return query
 
+    def closed_won_deal_query(select: str = "*"):
+        return deal_query(select).eq("stage", "closed_won")
+
     follow_ups_due = (
         lead_query()
         .in_("status", IN_FLIGHT_LEAD_STATUSES)
@@ -200,7 +203,9 @@ def get_dashboard(
     deal_values_by_lead: dict[str, Decimal] = {}
     if won_lead_ids:
         won_deals = (
-            deal_query("lead_id,sale_price,commission_total,commission_override")
+            closed_won_deal_query(
+                "lead_id,sale_price,commission_total,commission_override"
+            )
             .in_("lead_id", won_lead_ids)
             .execute()
             .data
@@ -246,7 +251,7 @@ def get_dashboard(
         .data
     )
     monthly_deals = (
-        deal_query()
+        closed_won_deal_query()
         .gte("closed_at", month_start.isoformat())
         .order("closed_at", desc=True)
         .execute()
@@ -254,7 +259,7 @@ def get_dashboard(
     )
     monthly_commission = _sum_commission(monthly_deals)
     range_deals = (
-        deal_query()
+        closed_won_deal_query()
         .gte("closed_at", range_start.isoformat())
         .order("closed_at", desc=True)
         .execute()
@@ -341,6 +346,7 @@ def get_dashboard(
             .select("*")
             .eq("team_id", auth.team_id)
             .eq("ren_id", user["id"])
+            .eq("stage", "closed_won")
             .gte("closed_at", range_start.isoformat())
             .execute()
             .data

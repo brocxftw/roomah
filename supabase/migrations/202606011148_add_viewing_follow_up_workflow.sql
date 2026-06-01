@@ -13,6 +13,15 @@ where status = 'completed'
   and completed_at is not null
   and follow_up_at is null;
 
+-- Backfill cancelled viewings that pre-date the cancellation workflow so the
+-- new check constraints can be validated against existing rows.
+update public.viewings
+set
+  cancellation_reason = coalesce(cancellation_reason, 'other'),
+  cancelled_at = coalesce(cancelled_at, scheduled_at, now())
+where status = 'cancelled'
+  and (cancellation_reason is null or cancelled_at is null);
+
 alter table public.viewings
   add constraint viewings_follow_up_status_valid check (
     follow_up_status is null

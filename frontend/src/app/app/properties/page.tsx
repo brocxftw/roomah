@@ -18,6 +18,7 @@ import {
   RefreshCcw,
   Search,
   Trash2,
+  X,
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -781,9 +782,19 @@ export default function PropertiesPage() {
                         {propertyReference(selectedProperty.id)}
                       </p>
                     </div>
-                    <Badge className={statusBadgeClass(selectedProperty.status)}>
-                      {selectedProperty.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={statusBadgeClass(selectedProperty.status)}>
+                        {selectedProperty.status}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => updateSelection(null)}
+                        aria-label="Close drawer"
+                        className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                      >
+                        <X className="h-4 w-4" aria-hidden />
+                      </button>
+                    </div>
                   </div>
                   <p className="mt-2 text-sm text-slate-500">
                     {propertyTypeLabel(selectedProperty.type)} ·{" "}

@@ -277,6 +277,7 @@ def list_leads(
     q: str | None = None,
     status_filter: LeadStatus | None = None,
     source_filter: str | None = None,
+    campaign: UUID | None = None,
     owner_id: UUID | None = None,
     preferred_state: str | None = None,
     preferred_city: str | None = None,
@@ -286,6 +287,8 @@ def list_leads(
     query = _lead_query_for_user(auth, user).order("updated_at", desc=True)
     if status_filter is not None:
         query = query.eq("status", status_filter.value)
+    if campaign is not None:
+        query = query.eq("campaign_id", str(campaign))
     if user["role"] == "MANAGER" and owner_id is not None:
         query = query.eq("ren_id", str(owner_id))
     if preferred_state:

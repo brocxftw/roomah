@@ -500,13 +500,6 @@ export default function PropertiesPage() {
     await refreshSelectedProperty();
   }
 
-  async function shareListing() {
-    if (!selectedProperty) return;
-    const url = `${window.location.origin}/app/properties?property=${selectedProperty.id}`;
-    await navigator.clipboard.writeText(url);
-    setMessage("Listing link copied.");
-  }
-
   async function deleteListing() {
     if (!selectedProperty) return;
     const confirmed = window.confirm(`Delete ${selectedProperty.name}?`);
@@ -867,14 +860,13 @@ export default function PropertiesPage() {
                     <option value="Pending">Pending</option>
                     <option value="Inactive">Inactive</option>
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => void shareListing()}
+                  <Link
+                    href={`/app/campaigns/new?property=${selectedProperty.id}`}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   >
                     <Copy className="h-4 w-4" />
-                    Share
-                  </button>
+                    Promote
+                  </Link>
                   <button
                     type="button"
                     onClick={() => void deleteListing()}

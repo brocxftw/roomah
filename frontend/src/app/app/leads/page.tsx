@@ -134,13 +134,12 @@ const LEAD_STATUSES = [
 
 const CAMPAIGN_CHANNELS = [
   "Facebook",
-  "Instagram",
-  "Google",
+  "WhatsApp",
   "TikTok",
-  "Email",
-  "Referral",
-  "Walk_In",
-  "Other",
+  "Threads",
+  "Instagram",
+  "Mudah.my",
+  "Others",
 ];
 
 const DRAWER_TABS = ["details", "timeline", "properties"] as const;
@@ -379,6 +378,7 @@ export default function LeadsPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const statusFilter = searchParams.get("status");
+  const campaignFilter = searchParams.get("campaign");
   const selectedLeadId = searchParams.get("lead");
   const isOverdueFilterActive = isSupportedLeadStatusFilter(statusFilter);
   const canFilterOwner = currentUser?.role === "MANAGER";
@@ -441,6 +441,7 @@ export default function LeadsPage() {
       if (query) params.set("q", query);
       if (status && !isOverdueFilterActive) params.set("status_filter", status);
       if (source) params.set("source_filter", source);
+      if (campaignFilter) params.set("campaign", campaignFilter);
       if (canFilterOwner && ownerId) params.set("owner_id", ownerId);
       if (preferredState) params.set("preferred_state", preferredState);
 
@@ -464,6 +465,7 @@ export default function LeadsPage() {
     source,
     ownerId,
     preferredState,
+    campaignFilter,
     canFilterOwner,
     isOverdueFilterActive,
   ]);
@@ -789,6 +791,18 @@ export default function LeadsPage() {
             className="font-medium underline underline-offset-4"
           >
             Clear filter
+          </Link>
+        </div>
+      ) : null}
+
+      {campaignFilter ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <span>Showing leads attributed to the selected campaign.</span>
+          <Link
+            href="/app/leads"
+            className="font-medium underline underline-offset-4"
+          >
+            Clear campaign filter
           </Link>
         </div>
       ) : null}

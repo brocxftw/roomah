@@ -508,6 +508,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     + Viewing
                   </Link>
                   <Link
+                    href="/app/campaigns/new"
+                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    + Campaign
+                  </Link>
+                  <Link
                     href="/app/deals"
                     className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
                   >

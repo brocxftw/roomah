@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.auth import AuthContext, get_auth_context
 from app.models import (
@@ -94,11 +94,12 @@ def create_campaign(
 ) -> dict[str, Any]:
     user = get_current_user_record(auth)
     insert_payload = payload.model_dump(mode="json")
+    desired_status = payload.status or CampaignStatus.DRAFT
     insert_payload.update(
         {
             "team_id": auth.team_id,
             "created_by": user["id"],
-            "status": CampaignStatus.DRAFT.value,
+            "status": desired_status.value,
             "leads_generated": 0,
             "conversions": 0,
         }
@@ -293,3 +294,29 @@ def recompute_campaign_metrics(
         .execute()
         .data[0]
     )
+
+
+@router.delete("/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_campaign(
+    campaign_id: UUID,
+    auth: AuthContext = Depends(get_auth_context),
+) -> Response:
+    """Delete a campaign.
+
+    Detaches any attributed leads (sets ``campaign_id = null``) so historic
+    lead records aren't lost; the lead's contact data and ownership stay
+    intact, just without the campaign attribution.
+    """
+    user = get_current_user_record(auth)
+    campaign = _get_campaign(campaign_id=campaign_id, auth=auth)
+    _ensure_campaign_write_access(campaign=campaign, user=user)
+
+    supabase = get_service_supabase()
+    supabase.table("leads").update({"campaign_id": None}).eq(
+        "team_id", auth.team_id
+    ).eq("campaign_id", str(campaign_id)).execute()
+    supabase.table("marketing_campaigns").delete().eq(
+        "id", str(campaign_id)
+    ).eq("team_id", auth.team_id).execute()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

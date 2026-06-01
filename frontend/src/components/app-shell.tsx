@@ -113,6 +113,7 @@ const pageMeta: Record<
     title: "Campaigns",
     description: "Review channels and campaign performance.",
     primaryAction: { label: "+ Add Campaign", href: "/app/campaigns/new" },
+    secondaryAction: { label: "Templates", href: "/app/campaigns/templates" },
   },
   "/app/viewings": {
     title: "Viewings",

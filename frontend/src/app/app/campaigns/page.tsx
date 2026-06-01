@@ -487,31 +487,6 @@ export default function CampaignsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
-            Campaigns
-          </h2>
-          <p className="text-sm text-slate-500">
-            Monitor spend, leads, conversions, and next actions from one workspace.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/app/campaigns/templates"
-            className="inline-flex min-h-11 items-center rounded-lg border px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Templates
-          </Link>
-          <Link
-            href="/app/campaigns/new"
-            className="inline-flex min-h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            + Add Campaign
-          </Link>
-        </div>
-      </div>
-
       <section className="grid gap-4 xl:grid-cols-6 md:grid-cols-3">
         {kpiCards.map((card) => (
           <KpiCard key={card.id} card={card} />

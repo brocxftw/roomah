@@ -1,0 +1,492 @@
+{
+    "design_system_name": "ROOMAH CRM - Viewing Management Workspace",
+  
+    "design_style": {
+      "category": "Modern SaaS CRM",
+      "subtype": "Scheduling and Follow-up Operations Workspace",
+      "personality": [
+        "Operational",
+        "Action-oriented",
+        "Time-sensitive",
+        "Professional",
+        "Organized",
+        "Workflow-driven"
+      ],
+      "visual_characteristics": [
+        "Calendar-first layout",
+        "Master-detail workspace",
+        "Card-based architecture",
+        "High information density",
+        "Minimal visual clutter",
+        "Soft borders",
+        "Subtle shadows",
+        "Clear status indicators",
+        "Schedule-focused interface"
+      ]
+    },
+  
+    "page_archetype": {
+      "type": "Calendar + Agenda + Detail Workspace",
+      "purpose": "Manage scheduled property viewings, customer interest, follow-ups, and conversion opportunities from a single operational screen.",
+      "interaction_model": "Plan → Execute Viewing → Record Interest → Follow-up → Convert"
+    },
+  
+    "layout": {
+      "type": "Three-Panel Operational Workspace",
+  
+      "left_panel": {
+        "role": "Global Navigation",
+        "width": "240-260px",
+        "fixed": true
+      },
+  
+      "center_panel": {
+        "role": "Viewing Operations Workspace",
+        "width": "fluid",
+        "priority": "highest"
+      },
+  
+      "right_panel": {
+        "role": "Viewing Detail Drawer",
+        "width": "360-400px",
+        "sticky": true,
+        "fixed": true
+      }
+    },
+  
+    "design_philosophy": {
+      "primary_goal": "Help agents manage viewing schedules and customer follow-ups with minimal friction.",
+  
+      "ux_principles": [
+        "Calendar and agenda should be visible together.",
+        "Viewing outcomes should be immediately actionable.",
+        "Follow-ups should be highly visible.",
+        "Interest tracking should be integrated into the workflow.",
+        "The interface should support daily operational execution rather than reporting."
+      ]
+    },
+  
+    "color_system": {
+      "navigation": {
+        "background": "#0B1F3A",
+        "gradient": true,
+        "active_item": "#00D4FF",
+        "text": "#FFFFFF"
+      },
+  
+      "content": {
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "border": "#E5E7EB"
+      },
+  
+      "text": {
+        "primary": "#111827",
+        "secondary": "#6B7280",
+        "muted": "#9CA3AF"
+      },
+  
+      "status": {
+        "scheduled": "#3B82F6",
+        "completed": "#22C55E",
+        "follow_up_due": "#F59E0B",
+        "overdue": "#EF4444",
+        "cancelled": "#6B7280"
+      }
+    },
+  
+    "spacing_system": {
+      "base_unit": 8,
+      "page_padding": 24,
+      "section_gap": 20,
+      "card_padding": 20,
+      "border_radius": 12
+    },
+  
+    "typography": {
+      "font_family": "Inter",
+  
+      "hierarchy": {
+        "page_title": {
+          "size": "32px",
+          "weight": 700
+        },
+  
+        "section_title": {
+          "size": "18px",
+          "weight": 600
+        },
+  
+        "metric": {
+          "size": "28px",
+          "weight": 700
+        },
+  
+        "body": {
+          "size": "14px"
+        },
+  
+        "caption": {
+          "size": "12px"
+        }
+      }
+    },
+  
+    "page_structure": {
+      "header": {
+        "layout": "horizontal",
+  
+        "left": [
+          "page_title",
+          "page_description"
+        ],
+  
+        "right": [
+          "secondary_action",
+          "primary_action"
+        ]
+      },
+  
+      "content_flow": [
+        "viewing_summary_metrics",
+        "calendar_workspace",
+        "filter_bar",
+        "viewings_table"
+      ]
+    },
+  
+    "summary_metrics": {
+      "purpose": "Viewing activity overview",
+  
+      "layout": {
+        "type": "horizontal_metric_grid",
+        "cards_per_row": 5
+      },
+  
+      "card_structure": {
+        "title": "top_left",
+        "metric": "primary_focus",
+        "trend": "bottom",
+        "icon": "left"
+      }
+    },
+  
+    "calendar_workspace": {
+      "role": "Primary scheduling area",
+  
+      "layout": {
+        "type": "split_card",
+        "ratio": "55/45"
+      },
+  
+      "left_section": {
+        "component": "calendar",
+  
+        "features": [
+          "month_view",
+          "week_view",
+          "day_view",
+          "date_navigation",
+          "today_button",
+          "event_markers"
+        ]
+      },
+  
+      "right_section": {
+        "component": "daily_agenda",
+  
+        "features": [
+          "timeline_schedule",
+          "time_slots",
+          "lead_summary",
+          "property_summary",
+          "interest_rating",
+          "status_indicator"
+        ]
+      }
+    },
+  
+    "calendar_design": {
+      "style": "CRM Scheduler",
+  
+      "requirements": [
+        "Display event density visually.",
+        "Support multiple viewing states.",
+        "Show calendar legend.",
+        "Highlight current day.",
+        "Allow rapid date navigation."
+      ]
+    },
+  
+    "agenda_design": {
+      "style": "Compact Daily Timeline",
+  
+      "requirements": [
+        "Time-based rows.",
+        "Status visibility.",
+        "Quick scanning.",
+        "Action-oriented layout."
+      ]
+    },
+  
+    "filter_bar": {
+      "purpose": "Viewing discovery and scheduling management",
+  
+      "layout": {
+        "single_row": true,
+        "contained_card": true
+      },
+  
+      "components": [
+        "search",
+        "status_filter",
+        "agent_filter",
+        "property_type_filter",
+        "date_range_filter",
+        "advanced_filters",
+        "reset_filters"
+      ]
+    },
+  
+    "viewings_table": {
+      "role": "Historical and operational viewing records",
+  
+      "style": {
+        "sticky_header": true,
+        "hover_state": true,
+        "selected_row": true,
+        "minimal_borders": true
+      },
+  
+      "layout": {
+        "pagination": true,
+        "full_width": true
+      },
+  
+      "column_groups": {
+  
+        "schedule": {
+          "contains": [
+            "date",
+            "time"
+          ]
+        },
+  
+        "lead": {
+          "contains": [
+            "avatar",
+            "lead_name",
+            "contact_details"
+          ]
+        },
+  
+        "property": {
+          "contains": [
+            "thumbnail",
+            "property_name",
+            "property_type"
+          ]
+        },
+  
+        "ownership": {
+          "contains": [
+            "assigned_agent"
+          ]
+        },
+  
+        "status": {
+          "badge": true
+        },
+  
+        "interest": {
+          "visual_rating": true
+        },
+  
+        "follow_up": {
+          "date_visibility": true
+        },
+  
+        "actions": {
+          "quick_action_icon": true,
+          "overflow_menu": true
+        }
+      }
+    },
+  
+    "interest_rating_system": {
+      "style": "Visual Interest Indicator",
+  
+      "requirements": [
+        "Use a simple visual scoring mechanism.",
+        "Should be instantly scannable.",
+        "Represent customer intent.",
+        "Used across agenda, table and drawer."
+      ]
+    },
+  
+    "right_drawer": {
+      "role": "Viewing Command Centre",
+  
+      "structure": [
+        "viewing_header",
+        "entity_information",
+        "customer_interest",
+        "notes",
+        "follow_up_recommendation",
+        "timeline",
+        "action_footer"
+      ]
+    },
+  
+    "viewing_header": {
+      "contains": [
+        "viewing_id",
+        "status",
+        "scheduled_date",
+        "scheduled_time"
+      ]
+    },
+  
+    "entity_information": {
+      "layout": "stacked_cards",
+  
+      "sections": [
+        "lead_summary",
+        "property_summary",
+        "agent_summary"
+      ]
+    },
+  
+    "property_summary": {
+      "includes_visual_thumbnail": true,
+  
+      "layout": {
+        "thumbnail_left": true,
+        "content_right": true
+      }
+    },
+  
+    "customer_interest": {
+      "purpose": "Most important conversion signal",
+  
+      "style": {
+        "highlighted_card": true,
+        "high_visibility": true
+      },
+  
+      "contains": [
+        "interest_rating",
+        "interest_label"
+      ]
+    },
+  
+    "notes_section": {
+      "style": "compact_information_card",
+  
+      "purpose": "Capture qualitative insights from viewing."
+    },
+  
+    "follow_up_recommendation": {
+      "style": "highlighted_action_card",
+  
+      "purpose": "Guide next best action.",
+  
+      "contains": [
+        "recommended_action",
+        "recommended_date"
+      ]
+    },
+  
+    "timeline_visualization": {
+      "style": "workflow_progression",
+  
+      "orientation": "horizontal",
+  
+      "stages": [
+        "scheduled",
+        "completed",
+        "follow_up",
+        "conversion"
+      ]
+    },
+  
+    "action_footer": {
+      "position": "bottom_of_drawer",
+  
+      "layout": {
+        "horizontal": true,
+        "equal_actions": true
+      },
+  
+      "actions": [
+        "edit_viewing",
+        "schedule_follow_up",
+        "convert_to_deal"
+      ]
+    },
+  
+    "cards": {
+      "background": "#FFFFFF",
+      "border": "1px solid #E5E7EB",
+      "radius": "12px",
+      "shadow": "minimal",
+      "padding": "20px"
+    },
+  
+    "component_patterns": {
+      "viewings_module": {
+  
+        "always_include": [
+          "summary_metrics",
+          "calendar_workspace",
+          "filter_bar",
+          "viewings_table",
+          "viewing_drawer"
+        ],
+  
+        "avoid": [
+          "large_analytics_charts",
+          "separate_viewing_detail_pages",
+          "report-heavy_layouts"
+        ]
+      }
+    },
+  
+    "interaction_rules": [
+      "Calendar and agenda should remain visible together.",
+      "Selecting a viewing updates the drawer instantly.",
+      "Customer interest should be visible everywhere.",
+      "Follow-up recommendations should be prominent.",
+      "Users should be able to move from viewing to deal conversion without leaving the page.",
+      "Scheduling workflow should feel fast and operational.",
+      "The drawer should function as a viewing command centre.",
+      "Maintain consistency with Leads, Properties and Campaigns modules."
+    ],
+  
+    "responsive_behavior": {
+      "desktop": {
+        "three_panel_layout": true
+      },
+  
+      "tablet": {
+        "drawer_collapsible": true,
+        "calendar_stack_layout": true
+      },
+  
+      "mobile": {
+        "calendar_becomes_agenda_first": true,
+        "drawer_becomes_bottom_sheet": true
+      }
+    },
+  
+    "cursor_generation_rules": [
+      "Calendar is the primary visual component.",
+      "Agenda is the secondary operational component.",
+      "Follow-up management should be prioritised.",
+      "Interest tracking should be integrated throughout the workflow.",
+      "Avoid separating scheduling and follow-up into different pages.",
+      "Present conversion opportunities directly within the viewing workflow.",
+      "Keep all actions accessible from the right-side drawer.",
+      "Maintain ROOMAH visual consistency across all modules."
+    ]
+  }

@@ -42,6 +42,14 @@ type LeadDetail = LeadOption & {
   }[];
 };
 
+type ViewingDetail = {
+  id: string;
+  lead_id: string;
+  property_id: string;
+  assigned_ren_id: string;
+  scheduled_at: string;
+};
+
 function leadDescription(lead: LeadOption) {
   return `${lead.phone} · ${lead.email} · ${lead.status}`;
 }
@@ -52,21 +60,40 @@ function propertyDescription(property: PropertyOption) {
     .join(" · ");
 }
 
+function datetimeLocalValue(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function queryDateTime(searchParams: URLSearchParams) {
+  const date = searchParams.get("date");
+  const time = searchParams.get("time");
+  if (!date) return "";
+  return `${date}T${time || "10:00"}`;
+}
+
 export default function NewViewingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getToken } = useAuth();
+  const editViewingId = searchParams.get("edit");
   const preselectedPropertyId = searchParams.get("property") ?? "";
+  const preselectedLeadId = searchParams.get("lead") ?? "";
+  const preselectedRenId = searchParams.get("assigned_ren") ?? "";
+  const preselectedScheduledAt = queryDateTime(searchParams);
   const [form, setForm] = useState({
-    lead_id: "",
+    lead_id: preselectedLeadId,
     property_id: preselectedPropertyId,
-    scheduled_at: "",
-    assigned_ren_id: "",
+    scheduled_at: preselectedScheduledAt,
+    assigned_ren_id: preselectedRenId,
   });
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [properties, setProperties] = useState<PropertyOption[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadDetail | null>(null);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [editingViewing, setEditingViewing] = useState<ViewingDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const updateField = (field: keyof typeof form, value: string) => {
@@ -123,20 +150,61 @@ export default function NewViewingPage() {
     });
   }, [form.lead_id, getToken]);
 
+  useEffect(() => {
+    async function loadEditingViewing() {
+      if (!editViewingId) return;
+      const token = await getToken();
+      const viewing = await apiFetch<ViewingDetail>(
+        `/viewings/${editViewingId}`,
+        token
+      );
+      setEditingViewing(viewing);
+      setForm({
+        lead_id: viewing.lead_id,
+        property_id: viewing.property_id,
+        scheduled_at: datetimeLocalValue(viewing.scheduled_at),
+        assigned_ren_id: viewing.assigned_ren_id,
+      });
+    }
+
+    void loadEditingViewing().catch((err) => {
+      setError(err instanceof Error ? err.message : "Failed to load viewing");
+    });
+  }, [editViewingId, getToken]);
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const token = await getToken();
     try {
-      await apiFetch("/viewings", token, {
-        method: "POST",
-        body: JSON.stringify({
-          ...form,
-          scheduled_at: new Date(form.scheduled_at).toISOString(),
-        }),
-      });
-      router.push("/app/viewings");
+      if (editViewingId) {
+        await apiFetch(`/viewings/${editViewingId}/reschedule`, token, {
+          method: "PATCH",
+          body: JSON.stringify({
+            scheduled_at: new Date(form.scheduled_at).toISOString(),
+          }),
+        });
+        if (
+          editingViewing &&
+          form.assigned_ren_id !== editingViewing.assigned_ren_id
+        ) {
+          await apiFetch(`/viewings/${editViewingId}/reassign`, token, {
+            method: "PATCH",
+            body: JSON.stringify({ assigned_ren_id: form.assigned_ren_id }),
+          });
+        }
+        router.push(`/app/viewings?viewing=${editViewingId}`);
+      } else {
+        await apiFetch("/viewings", token, {
+          method: "POST",
+          body: JSON.stringify({
+            ...form,
+            scheduled_at: new Date(form.scheduled_at).toISOString(),
+          }),
+        });
+        router.push("/app/viewings");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to schedule");
+      setError(err instanceof Error ? err.message : "Failed to save viewing");
     }
   };
 
@@ -196,10 +264,12 @@ export default function NewViewingPage() {
     <form onSubmit={submit} className="mx-auto max-w-2xl space-y-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">
-          Schedule Viewing
+          {editViewingId ? "Edit Viewing" : "Schedule Viewing"}
         </h2>
         <p className="text-muted-foreground">
-          Choose lead, property, date/time, and assigned REN.
+          {editViewingId
+            ? "Update the appointment time or assigned REN."
+            : "Choose lead, property, date/time, and assigned REN."}
         </p>
       </div>
 
@@ -248,7 +318,7 @@ export default function NewViewingPage() {
         type="submit"
         className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
       >
-        Save Viewing
+        {editViewingId ? "Save Changes" : "Save Viewing"}
       </button>
     </form>
   );

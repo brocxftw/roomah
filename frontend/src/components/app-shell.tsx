@@ -26,6 +26,8 @@ type CurrentUser = {
   email: string;
   full_name: string;
   role?: string | null;
+  avatar_url?: string | null;
+  session_timeout_minutes?: number | null;
 };
 
 type NavItem = {
@@ -129,8 +131,8 @@ const pageMeta: Record<
     primaryAction: { label: "+ Add Team Member", href: "/app/manager/team/new" },
   },
   "/app/profile": {
-    title: "Profile",
-    description: "Update account settings and preferences.",
+    title: "Settings",
+    description: "Manage your profile, commission, notifications, and security.",
   },
 };
 
@@ -320,6 +322,58 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
     });
   }, [getToken, router, signOut]);
+
+  useEffect(() => {
+    function onSettingsUpdated(event: Event) {
+      const nextUser = (event as CustomEvent<Partial<CurrentUser>>).detail;
+      setCurrentUser((current) =>
+        current ? { ...current, ...nextUser } : (nextUser as CurrentUser)
+      );
+    }
+
+    window.addEventListener("roomah:user-settings-updated", onSettingsUpdated);
+    return () =>
+      window.removeEventListener(
+        "roomah:user-settings-updated",
+        onSettingsUpdated
+      );
+  }, []);
+
+  useEffect(() => {
+    const timeoutMinutes = currentUser?.session_timeout_minutes;
+    if (!timeoutMinutes || timeoutMinutes <= 0) {
+      return;
+    }
+
+    const timeoutMs = timeoutMinutes * 60 * 1000;
+    let timeoutId: number | undefined;
+
+    async function handleIdleTimeout() {
+      await signOut();
+      router.push("/");
+      router.refresh();
+    }
+
+    function resetIdleTimer() {
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => {
+        void handleIdleTimeout();
+      }, timeoutMs);
+    }
+
+    const events = ["keydown", "mousedown", "mousemove", "scroll", "touchstart"];
+    for (const eventName of events) {
+      window.addEventListener(eventName, resetIdleTimer, { passive: true });
+    }
+    resetIdleTimer();
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      for (const eventName of events) {
+        window.removeEventListener(eventName, resetIdleTimer);
+      }
+    };
+  }, [currentUser?.session_timeout_minutes, router, signOut]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -525,8 +579,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
               <details className="relative">
                 <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200 px-2 text-sm text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
-                    {userInitials}
+                  <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+                    {currentUser?.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={currentUser.avatar_url}
+                        alt=""
+                        aria-hidden
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      userInitials
+                    )}
                   </span>
                   <span className="hidden max-w-28 truncate text-left sm:block">
                     {currentUser?.full_name ?? "Profile"}
@@ -547,7 +611,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
                     <UserCircle2 className="size-4" aria-hidden />
-                    Profile
+                    Settings
                   </Link>
                   <button
                     type="button"

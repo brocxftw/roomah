@@ -327,8 +327,11 @@ class FakeSupabase:
             "commission_rate": "0.02",
             "full_name": email.split("@", maxsplit=1)[0],
             "phone_number": None,
+            "avatar_url": None,
             "active_status": True,
             "monthly_target_amount": None,
+            "notification_preferences": {},
+            "session_timeout_minutes": None,
         }
 
     def table(self, table_name: str) -> FakeQuery:
@@ -1979,6 +1982,80 @@ def test_ren_cannot_patch_restricted_user_fields(monkeypatch) -> None:
         )
 
     assert exc_info.value.status_code == 403
+
+
+# Integration-style route tests are used here because settings updates exercise
+# Pydantic payload validation, auth-scoped Supabase filters, and persisted row
+# changes together.
+def test_ren_can_patch_self_service_settings(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    preferences = {
+        "follow_ups_due": {"in_app": True, "email": False},
+        "upcoming_viewings": {"in_app": True, "email": True},
+        "deals_closing_soon": {"in_app": False, "email": True},
+        "coaching_notes": {"in_app": True, "email": False},
+        "weekly_performance_summary": {"in_app": False, "email": False},
+    }
+    updated = user_routes.update_me(
+        payload=user_routes.UserSelfUpdate(
+            full_name="Alyssa Ren",
+            phone_number="+60123456789",
+            avatar_url="https://cdn.example.com/avatars/alyssa.png",
+            commission_rate=Decimal("0.035"),
+            monthly_target_amount=Decimal("500000"),
+            notification_preferences=preferences,
+            session_timeout_minutes=30,
+        ),
+        auth=auth,
+    )
+
+    assert updated["full_name"] == "Alyssa Ren"
+    assert updated["phone_number"] == "+60123456789"
+    assert updated["avatar_url"] == "https://cdn.example.com/avatars/alyssa.png"
+    assert updated["commission_rate"] == "0.035"
+    assert updated["monthly_target_amount"] == "500000"
+    assert updated["notification_preferences"] == preferences
+    assert updated["session_timeout_minutes"] == 30
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"active_status": False},
+        {"email": "other@example.com"},
+        {"role": "MANAGER"},
+        {"team_id": UUID("00000000-0000-4000-8000-000000000999")},
+    ],
+)
+def test_ren_cannot_patch_restricted_identity_fields(monkeypatch, payload) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    with pytest.raises(HTTPException) as exc_info:
+        user_routes.update_me(
+            payload=user_routes.UserSelfUpdate(**payload),
+            auth=auth,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_avatar_upload_url_rejects_unsupported_content_type(monkeypatch) -> None:
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+
+    with pytest.raises(HTTPException) as exc_info:
+        user_routes.create_avatar_upload_url(
+            payload=user_routes.AvatarUploadRequest(content_type="application/pdf"),
+            auth=auth,
+        )
+
+    assert exc_info.value.status_code == 400
 
 
 def test_manager_can_patch_team_member_identity_and_status(monkeypatch) -> None:

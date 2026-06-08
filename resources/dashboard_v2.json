@@ -1,0 +1,410 @@
+{
+    "design_system_name": "ROOMAH CRM - Operational Dashboard Workspace",
+  
+    "design_style": {
+      "category": "Modern SaaS CRM Dashboard",
+      "subtype": "Action-First Operational Workspace",
+      "personality": [
+        "Professional",
+        "Efficient",
+        "Operational",
+        "Decision-oriented",
+        "Clean",
+        "Productivity-focused"
+      ],
+      "visual_characteristics": [
+        "Card-based layout",
+        "High information density with clear hierarchy",
+        "Dashboard-first workflow",
+        "Minimal visual noise",
+        "Consistent card dimensions",
+        "Modular content blocks",
+        "Action-focused information architecture",
+        "Operational insights before analytics"
+      ]
+    },
+  
+    "design_philosophy": {
+      "primary_goal": "Help users immediately understand what requires attention, what is scheduled, and what opportunities need action.",
+  
+      "ux_principles": [
+        "Actions before analytics.",
+        "Today's work before historical reporting.",
+        "Operational visibility over business intelligence.",
+        "High scanability.",
+        "Minimal cognitive load.",
+        "Every card should answer a question or trigger an action."
+      ]
+    },
+  
+    "layout": {
+      "type": "Multi-Section Dashboard Grid",
+  
+      "content_area": {
+        "width": "fluid",
+        "padding": 24,
+        "max_sections_per_row": 3
+      },
+  
+      "vertical_structure": [
+        "page_header",
+        "kpi_summary_row",
+        "operational_workspace_row",
+        "opportunity_management_row",
+        "activity_and_actions_row"
+      ]
+    },
+  
+    "page_header": {
+      "layout": "horizontal",
+  
+      "left": [
+        "personalized_greeting",
+        "supporting_description"
+      ],
+  
+      "right": [
+        "date_selector",
+        "time_period_filter"
+      ]
+    },
+  
+    "grid_system": {
+      "base_unit": 8,
+      "card_gap": 16,
+      "section_gap": 16,
+      "card_padding": 20,
+  
+      "responsive_behavior": {
+        "desktop": {
+          "multi_column": true
+        },
+  
+        "tablet": {
+          "reduced_columns": true
+        },
+  
+        "mobile": {
+          "single_column_stack": true
+        }
+      }
+    },
+  
+    "kpi_summary_row": {
+      "purpose": "Provide immediate business health overview.",
+  
+      "layout": {
+        "type": "horizontal_metric_grid",
+        "cards_per_row": 5,
+        "equal_width": true
+      },
+  
+      "card_structure": {
+        "icon": "leading",
+        "title": "top",
+        "metric": "primary_focus",
+        "trend": "bottom"
+      },
+  
+      "visual_weight": "medium"
+    },
+  
+    "operational_workspace_row": {
+      "layout": {
+        "type": "three_column",
+        "distribution": "equal"
+      },
+  
+      "components": [
+        {
+          "type": "task_queue_card",
+          "priority": "high"
+        },
+        {
+          "type": "schedule_card",
+          "priority": "high"
+        },
+        {
+          "type": "opportunity_card",
+          "priority": "high"
+        }
+      ]
+    },
+  
+    "task_queue_card": {
+      "purpose": "Display items requiring immediate attention.",
+  
+      "structure": {
+        "header": {
+          "title": true,
+          "counter_badge": true,
+          "view_all_link": true
+        },
+  
+        "body": {
+          "list_layout": true,
+          "compact_rows": true
+        }
+      },
+  
+      "row_pattern": {
+        "avatar": true,
+        "primary_text": true,
+        "secondary_text": true,
+        "urgency_indicator": true,
+        "quick_action": true
+      }
+    },
+  
+    "schedule_card": {
+      "purpose": "Display today's operational schedule.",
+  
+      "structure": {
+        "header": {
+          "title": true,
+          "counter_badge": true,
+          "view_link": true
+        },
+  
+        "body": {
+          "timeline_layout": true,
+          "chronological_order": true
+        }
+      },
+  
+      "item_pattern": {
+        "time": true,
+        "thumbnail": true,
+        "primary_label": true,
+        "secondary_label": true,
+        "status_badge": true,
+        "quick_action": true
+      }
+    },
+  
+    "opportunity_card": {
+      "purpose": "Highlight highest priority opportunities.",
+  
+      "structure": {
+        "header": {
+          "title": true,
+          "counter_badge": true,
+          "view_all_link": true
+        },
+  
+        "body": {
+          "ranked_list": true
+        }
+      },
+  
+      "item_pattern": {
+        "avatar": true,
+        "primary_information": true,
+        "secondary_information": true,
+        "interest_indicator": true,
+        "quick_action": true
+      }
+    },
+  
+    "opportunity_management_row": {
+      "layout": {
+        "type": "three_column",
+        "distribution": "40_40_20"
+      },
+  
+      "components": [
+        {
+          "type": "matching_recommendations"
+        },
+        {
+          "type": "workflow_pipeline_alerts"
+        },
+        {
+          "type": "monthly_progress_widget"
+        }
+      ]
+    },
+  
+    "matching_recommendations": {
+      "purpose": "Present system-generated recommendations.",
+  
+      "structure": {
+        "header": {
+          "title": true,
+          "counter_badge": true,
+          "view_all_link": true
+        },
+  
+        "body": {
+          "stacked_cards": true
+        }
+      },
+  
+      "item_pattern": {
+        "thumbnail": true,
+        "primary_text": true,
+        "secondary_text": true,
+        "match_score": true
+      }
+    },
+  
+    "workflow_pipeline_alerts": {
+      "purpose": "Highlight records requiring progression.",
+  
+      "structure": {
+        "header": {
+          "title": true,
+          "counter_badge": true,
+          "navigation_link": true
+        },
+  
+        "body": {
+          "workflow_list": true
+        }
+      },
+  
+      "item_pattern": {
+        "workflow_icon": true,
+        "entity_name": true,
+        "workflow_stage": true,
+        "value_metric": true
+      }
+    },
+  
+    "monthly_progress_widget": {
+      "purpose": "Track progress against personal goals.",
+  
+      "structure": {
+        "header": {
+          "title": true
+        },
+  
+        "body": {
+          "primary_metric": true,
+          "goal_comparison": true,
+          "progress_bar": true,
+          "supporting_metrics": true
+        }
+      }
+    },
+  
+    "activity_and_actions_row": {
+      "layout": {
+        "type": "two_column",
+        "distribution": "70_30"
+      },
+  
+      "components": [
+        {
+          "type": "recent_activity_feed"
+        },
+        {
+          "type": "quick_actions_panel"
+        }
+      ]
+    },
+  
+    "recent_activity_feed": {
+      "purpose": "Provide awareness of recent operational events.",
+  
+      "structure": {
+        "header": {
+          "title": true,
+          "timeline_link": true
+        },
+  
+        "body": {
+          "horizontal_activity_cards": true
+        }
+      },
+  
+      "activity_pattern": {
+        "icon": true,
+        "activity_title": true,
+        "supporting_text": true,
+        "timestamp": true
+      }
+    },
+  
+    "quick_actions_panel": {
+      "purpose": "Provide one-click access to common workflows.",
+  
+      "layout": {
+        "horizontal_action_cards": true,
+        "equal_width": true
+      },
+  
+      "action_pattern": {
+        "icon": true,
+        "action_label": true
+      }
+    },
+  
+    "cards": {
+      "style": "Soft Enterprise",
+  
+      "properties": {
+        "surface": "white",
+        "border": "subtle",
+        "shadow": "minimal",
+        "radius": 12,
+        "padding": 20
+      }
+    },
+  
+    "list_patterns": {
+      "row_height": "comfortable",
+  
+      "elements": [
+        "avatar",
+        "thumbnail",
+        "primary_text",
+        "secondary_text",
+        "status_indicator",
+        "quick_action"
+      ]
+    },
+  
+    "information_hierarchy": {
+      "level_1": [
+        "urgent_tasks",
+        "today_schedule",
+        "high_priority_opportunities"
+      ],
+  
+      "level_2": [
+        "recommended_matches",
+        "pipeline_actions",
+        "goal_progress"
+      ],
+  
+      "level_3": [
+        "recent_activity",
+        "quick_actions"
+      ]
+    },
+  
+    "interaction_rules": [
+      "The dashboard must prioritise daily execution over reporting.",
+      "Users should identify today's priorities within 5 seconds.",
+      "All major cards should provide direct navigation to the related module.",
+      "Quick actions should always remain visible.",
+      "Use counters and badges to communicate urgency.",
+      "Present recommendations as actionable opportunities rather than analytics.",
+      "Avoid large charts on the dashboard.",
+      "Use operational summaries instead of BI-style reporting.",
+      "Every dashboard component should support a workflow action."
+    ],
+  
+    "cursor_generation_rules": [
+      "Use a modular card-based dashboard layout.",
+      "Prioritise tasks, schedules and opportunities above analytics.",
+      "Maintain consistent spacing and card dimensions.",
+      "Use equal-height cards within each row where possible.",
+      "Group related workflows together.",
+      "Keep visual complexity low despite high information density.",
+      "Design for rapid scanning and decision-making.",
+      "Avoid decorative content that does not support workflow execution.",
+      "Treat the dashboard as a command centre, not a reporting page."
+    ]
+  }

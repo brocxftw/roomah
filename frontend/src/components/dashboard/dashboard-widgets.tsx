@@ -7,6 +7,7 @@ import {
   Flame,
   Home,
   Megaphone,
+  Phone,
   Plus,
   UserPlus,
   Users,
@@ -35,14 +36,6 @@ const accentStyles: Record<Tone, string> = {
   emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   blue: "bg-blue-50 text-blue-700 ring-blue-100",
   slate: "bg-slate-100 text-slate-700 ring-slate-200",
-};
-
-const taskToneStyles: Record<Tone, string> = {
-  red: "bg-red-50 text-red-700",
-  amber: "bg-amber-50 text-amber-700",
-  emerald: "bg-emerald-50 text-emerald-700",
-  blue: "bg-blue-50 text-blue-700",
-  slate: "bg-slate-100 text-slate-700",
 };
 
 const dateRangeLabels: Record<string, string> = {
@@ -163,91 +156,6 @@ export function KpiStrip({
   );
 }
 
-export function TodayTasksWidget({
-  counts,
-}: {
-  counts: {
-    overdue_follow_ups: number;
-    viewings_today: number;
-    deals_due: number;
-  };
-}) {
-  const tasks = [
-    {
-      label: "Follow-ups Due",
-      description: "Reconnect with leads that have gone quiet.",
-      count: counts.overdue_follow_ups,
-      href: "/app/leads?status=overdue",
-      tone: "red" as const,
-      icon: Flame,
-    },
-    {
-      label: "Viewings Today",
-      description: "Prepare, attend, and complete today's appointments.",
-      count: counts.viewings_today,
-      href: "/app/viewings?today=true",
-      tone: "amber" as const,
-      icon: CalendarDays,
-    },
-    {
-      label: "Deals Closing Soon",
-      description: "Move negotiation-stage leads toward a close.",
-      count: counts.deals_due,
-      href: "/app/deals?status=closing",
-      tone: "emerald" as const,
-      icon: Wallet,
-    },
-  ];
-
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">
-            Today&apos;s Tasks
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Start with the work most likely to need action now.
-          </p>
-        </div>
-      </div>
-      <div className="mt-5 divide-y divide-slate-100 dark:divide-slate-800">
-        {tasks.map((task) => {
-          const Icon = task.icon;
-          return (
-            <Link
-              key={task.label}
-              href={task.href}
-              className="group flex items-center gap-4 py-4 first:pt-0 last:pb-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span
-                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${taskToneStyles[task.tone]}`}
-              >
-                <Icon className="size-5" aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950 dark:text-slate-50">
-                  {task.label}
-                </span>
-                <span className="mt-1 block text-sm text-slate-500">
-                  {task.description}
-                </span>
-              </span>
-              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-slate-900 px-2 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
-                {task.count}
-              </span>
-              <ArrowRight
-                className="size-4 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-700 dark:group-hover:text-slate-200"
-                aria-hidden
-              />
-            </Link>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 type QuickActionItem = {
   label: string;
   href: string;
@@ -311,10 +219,13 @@ type AgendaItem = {
 
 export function TodayAgenda({ items }: { items: AgendaItem[] }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section
+      aria-label="Today's Schedule"
+      className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+    >
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold">Today&apos;s Appointments</h3>
+          <h3 className="text-base font-semibold">Today&apos;s Schedule</h3>
           <p className="mt-1 text-xs text-slate-500">
             Scheduled viewings to prepare, attend, and complete today.
           </p>
@@ -326,7 +237,7 @@ export function TodayAgenda({ items }: { items: AgendaItem[] }) {
           View all
         </Link>
       </div>
-      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+      <div className="mt-4 flex-1 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
         {items.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">
             No viewings scheduled for today.
@@ -342,9 +253,13 @@ export function TodayAgenda({ items }: { items: AgendaItem[] }) {
               return (
                 <div
                   key={item.id}
-                  className="grid gap-3 p-4 text-sm sm:grid-cols-[90px_minmax(0,1fr)_auto] sm:items-center"
+                  className="grid gap-3 p-4 text-sm sm:grid-cols-[78px_minmax(0,1fr)_auto] sm:items-center"
                 >
-                  <span className="font-semibold text-slate-950 dark:text-slate-50">
+                  <span className="flex items-center gap-2 font-semibold text-slate-950 dark:text-slate-50">
+                    <span
+                      className="inline-flex size-2 shrink-0 rounded-full bg-amber-500"
+                      aria-hidden
+                    />
                     {timeLabel}
                   </span>
                   <div className="min-w-0">
@@ -356,9 +271,14 @@ export function TodayAgenda({ items }: { items: AgendaItem[] }) {
                       {item.property_id.slice(0, 8)}
                     </p>
                   </div>
-                  <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium capitalize text-amber-800">
-                    {item.status}
-                  </span>
+                  <Link
+                    href={`/app/viewings/${item.id}`}
+                    aria-label={`Open viewing at ${timeLabel}`}
+                    className="inline-flex w-fit items-center gap-1 justify-self-start rounded-full bg-slate-900 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-slate-100 dark:text-slate-900 sm:justify-self-end"
+                  >
+                    Open
+                    <ArrowRight className="size-3" aria-hidden />
+                  </Link>
                 </div>
               );
             })}
@@ -409,12 +329,12 @@ export function PipelineFunnel({
   conversionRate: number | null;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <h3 className="text-base font-semibold">Pipeline</h3>
+          <h3 className="text-base font-semibold">Lifecycle Pipeline</h3>
           <p className="text-xs text-slate-500">
-            Customer lifecycle progress by stage.
+            Compact customer lifecycle progress by stage.
           </p>
         </div>
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-right dark:bg-slate-800">
@@ -427,7 +347,7 @@ export function PipelineFunnel({
         </div>
       </div>
       <div
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6"
         aria-label="Pipeline stage progression"
       >
         {stages.map((stage, index) => {
@@ -439,16 +359,18 @@ export function PipelineFunnel({
           return (
             <div key={stage.stage} className="relative">
               <div
-                className={`h-full rounded-xl border border-slate-200 p-4 ${styles.bg} dark:border-slate-800`}
+                className={`h-full rounded-xl border border-slate-200 p-3 ${styles.bg} dark:border-slate-800`}
               >
                 <p className={`text-sm font-semibold ${styles.text}`}>
                   {stage.stage}
                 </p>
-                <p className="mt-3 text-2xl font-semibold text-slate-950 dark:text-slate-50">
+                <p className="mt-2 text-2xl font-semibold text-slate-950 dark:text-slate-50">
                   {stage.count}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">RM {stage.value}</p>
-                <div className="mt-4 h-1.5 rounded-full bg-white/80">
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  RM {stage.value}
+                </p>
+                <div className="mt-3 h-1.5 rounded-full bg-white/80">
                   <div className={`h-full w-full rounded-full ${styles.bar}`} />
                 </div>
               </div>
@@ -555,7 +477,10 @@ export function FollowUpsQueue({ items }: { items: FollowUpLead[] }) {
   });
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <section
+      aria-label="Follow-ups Due"
+      className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+    >
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-base font-semibold">Follow-ups Due</h3>
@@ -570,7 +495,7 @@ export function FollowUpsQueue({ items }: { items: FollowUpLead[] }) {
           View all
         </Link>
       </div>
-      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+      <div className="mt-4 flex-1 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
         {sortedItems.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">No overdue follow-ups.</p>
         ) : (
@@ -583,18 +508,29 @@ export function FollowUpsQueue({ items }: { items: FollowUpLead[] }) {
                 <Link
                   key={lead.id}
                   href={`/app/leads/${lead.id}`}
-                  className="grid gap-3 p-4 text-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-slate-800 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  className="group grid gap-3 p-4 text-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-slate-800 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  aria-label={`Call ${lead.name ?? `Lead ${lead.id.slice(0, 8)}`}`}
                 >
                   <span className="min-w-0">
-                    <span className="block font-medium text-slate-950 dark:text-slate-50">
+                    <span className="flex items-center gap-2 font-medium text-slate-950 dark:text-slate-50">
+                      <span
+                        className="inline-flex size-2 shrink-0 rounded-full bg-red-500"
+                        aria-hidden
+                      />
                       {lead.name ?? `Lead ${lead.id.slice(0, 8)}`}
                     </span>
                     <span className="mt-1 block text-xs text-slate-500">
                       Last interaction: {lastInteraction}
                     </span>
                   </span>
-                  <span className="w-fit rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
-                    {lead.status ?? "Follow-up"}
+                  <span className="flex items-center gap-2 justify-self-start sm:justify-self-end">
+                    <span className="w-fit rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+                      {lead.status ?? "Follow-up"}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-medium text-white transition group-hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900">
+                      <Phone className="size-3" aria-hidden />
+                      Call
+                    </span>
                   </span>
                 </Link>
               );

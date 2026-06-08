@@ -152,7 +152,6 @@ type ManagerWorkspace = {
 type DrawerForm = {
   full_name: string;
   phone_number: string;
-  commission_rate: string;
   monthly_target_amount: string;
 };
 
@@ -347,7 +346,6 @@ export default function ManagerDashboardPage() {
       setForm({
         full_name: selected.contact?.full_name ?? selected.name ?? "",
         phone_number: selected.contact?.phone_number ?? "",
-        commission_rate: String(selected.commission_configuration?.commission_rate ?? ""),
         monthly_target_amount: String(
           selected.commission_configuration?.monthly_target_amount ?? ""
         ),
@@ -388,7 +386,6 @@ export default function ManagerDashboardPage() {
     return (
       form.full_name !== (selectedMember.contact?.full_name ?? selectedMember.name ?? "") ||
       form.phone_number !== (selectedMember.contact?.phone_number ?? "") ||
-      form.commission_rate !== String(selectedMember.commission_configuration?.commission_rate ?? "") ||
       form.monthly_target_amount !==
         String(selectedMember.commission_configuration?.monthly_target_amount ?? "")
     );
@@ -416,24 +413,12 @@ export default function ManagerDashboardPage() {
 
   async function saveMember(nextActiveStatus?: boolean) {
     if (!selectedMember || !form) return;
-    const originalRate = numberValue(selectedMember.commission_configuration?.commission_rate);
-    const nextRate = numberValue(form.commission_rate);
-    const relativeDelta =
-      originalRate === 0 ? 0 : Math.abs(nextRate - originalRate) / originalRate;
-    if (
-      nextActiveStatus === undefined &&
-      relativeDelta > 0.25 &&
-      !window.confirm("Commission rate changed by more than 25%. Save anyway?")
-    ) {
-      return;
-    }
     const token = await getToken();
     await apiFetch(`/users/${selectedMember.ren_id}`, token, {
       method: "PATCH",
       body: JSON.stringify({
         full_name: form.full_name,
         phone_number: form.phone_number || null,
-        commission_rate: form.commission_rate ? Number(form.commission_rate) : null,
         monthly_target_amount: form.monthly_target_amount
           ? Number(form.monthly_target_amount)
           : null,
@@ -893,16 +878,8 @@ function TeamMemberDrawer({
                   />
                 </InfoCard>
 
-                <InfoCard title="Commission Configuration" icon={CircleDollarSign}>
-                  <label className="block text-xs font-medium text-slate-500">Commission rate</label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                    type="number"
-                    step="0.001"
-                    value={form.commission_rate}
-                    onChange={(event) => onFormChange({ ...form, commission_rate: event.target.value })}
-                  />
-                  <label className="mt-3 block text-xs font-medium text-slate-500">Monthly target</label>
+                <InfoCard title="Target Management" icon={Target}>
+                  <label className="block text-xs font-medium text-slate-500">Monthly target</label>
                   <input
                     className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     type="number"

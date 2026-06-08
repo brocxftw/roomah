@@ -151,8 +151,11 @@ class User(RoomahModel):
     commission_rate: Decimal = Field(ge=0)
     full_name: str
     phone_number: str | None = None
+    avatar_url: str | None = None
     active_status: bool
     monthly_target_amount: Decimal | None = Field(default=None, ge=0)
+    notification_preferences: dict[str, Any] = Field(default_factory=dict)
+    session_timeout_minutes: int | None = Field(default=None, ge=0)
     created_at: datetime
 
 

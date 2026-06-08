@@ -3,12 +3,12 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import {
-  AlertTriangle,
   BarChart3,
   BriefcaseBusiness,
-  CalendarClock,
+  CalendarDays,
   CheckCircle2,
   CircleDollarSign,
+  Flame,
   LineChartIcon,
   MessageSquareText,
   MoreHorizontal,
@@ -17,18 +17,20 @@ import {
   TrendingDown,
   TrendingUp,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type React from "react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   Pie,
@@ -154,9 +156,33 @@ type DrawerForm = {
   monthly_target_amount: string;
 };
 
-const CHART_COLORS = ["#0F172A", "#334155", "#64748B", "#94A3B8", "#CBD5E1"];
-const CHART_PRIMARY = "#0F172A";
+// Data-viz palette mirrors the dashboard pipeline funnel and Deals stage colors.
+const CHART_COLORS = ["#0EA5E9", "#3B82F6", "#6366F1", "#A855F7", "#F59E0B", "#10B981"];
+const STAGE_COLORS: Record<string, string> = {
+  negotiation: "#0EA5E9", // sky-500
+  offer_made: "#3B82F6", // blue-500
+  pending_contract: "#6366F1", // indigo-500
+  final_approval: "#A855F7", // purple-500
+  closed_won: "#10B981", // emerald-500
+  closed_lost: "#94A3B8", // slate-400
+};
+const CHART_PERFORMANCE = "#10B981"; // emerald — closed-won momentum
+const CHART_COMMISSION = "#3B82F6"; // blue — commission value
 const CHART_GRID = "#E2E8F0";
+
+function stageColor(stage: string | undefined, index: number) {
+  return (stage && STAGE_COLORS[stage]) || CHART_COLORS[index % CHART_COLORS.length];
+}
+
+type AccentTone = "emerald" | "blue" | "amber" | "slate" | "red";
+
+const ACCENT_STYLES: Record<AccentTone, string> = {
+  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  blue: "bg-blue-50 text-blue-700 ring-blue-100",
+  amber: "bg-amber-50 text-amber-700 ring-amber-100",
+  slate: "bg-slate-100 text-slate-700 ring-slate-200",
+  red: "bg-red-50 text-red-700 ring-red-100",
+};
 
 function numberValue(value: string | number | null | undefined) {
   const parsed = Number(value ?? 0);
@@ -188,18 +214,24 @@ function stageLabel(value?: string | null) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function legendLabel(value: React.ReactNode) {
+  return <span className="text-xs text-slate-600 dark:text-slate-300">{value}</span>;
+}
+
 function KpiCard({
   icon: Icon,
   title,
   value,
   subtext,
   change,
+  accent,
 }: {
   icon: LucideIcon;
   title: string;
   value: string;
   subtext?: string;
   change?: number | null;
+  accent: AccentTone;
 }) {
   const trend =
     change === null || change === undefined
@@ -210,8 +242,10 @@ function KpiCard({
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-start gap-3">
-        <span className="rounded-xl bg-slate-100 p-2 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-          <Icon className="h-5 w-5" />
+        <span
+          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1 ${ACCENT_STYLES[accent]}`}
+        >
+          <Icon className="size-5" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -260,7 +294,7 @@ function Sparkline({ data }: { data: ChartDatum[] }) {
             type="monotone"
             dataKey="commission"
             dot={false}
-            stroke={CHART_PRIMARY}
+            stroke={CHART_COMMISSION}
             strokeWidth={2}
           />
         </LineChart>
@@ -295,6 +329,7 @@ export default function ManagerDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notAuthorized, setNotAuthorized] = useState(false);
+  const drawerRef = useRef<HTMLElement | null>(null);
 
   async function loadWorkspace() {
     const token = await getToken();
@@ -331,6 +366,20 @@ export default function ManagerDashboardPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken, selectedRenId]);
+
+  useEffect(() => {
+    if (!selectedRenId) return;
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (drawerRef.current?.contains(target)) return;
+      if (target.closest('[data-ren-row="true"]')) return;
+      closeDrawer();
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRenId]);
 
   const selectedMember = workspace?.selected_member ?? null;
   const rows = workspace?.team_performance ?? [];
@@ -431,8 +480,8 @@ export default function ManagerDashboardPage() {
   }
 
   return (
-    <div className="flex gap-6">
-      <section className="min-w-0 flex-1 space-y-6">
+    <div className="space-y-6">
+      <section className="space-y-6">
         {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
 
         {workspace ? (
@@ -440,6 +489,7 @@ export default function ManagerDashboardPage() {
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <KpiCard
                 icon={CheckCircle2}
+                accent="emerald"
                 title="Closed Won MTD"
                 value={`${workspace.kpis.closed_won_mtd.count ?? 0} deals`}
                 subtext={formatCurrency(workspace.kpis.closed_won_mtd.value)}
@@ -447,12 +497,14 @@ export default function ManagerDashboardPage() {
               />
               <KpiCard
                 icon={CircleDollarSign}
+                accent="emerald"
                 title="Commission MTD"
                 value={formatCurrency(workspace.kpis.commission_mtd.value)}
                 change={workspace.kpis.commission_mtd.change}
               />
               <KpiCard
                 icon={BriefcaseBusiness}
+                accent="blue"
                 title="Active Pipeline"
                 value={formatCurrency(workspace.kpis.active_pipeline_value.value)}
                 subtext={`Weighted ${formatCurrency(
@@ -461,6 +513,7 @@ export default function ManagerDashboardPage() {
               />
               <KpiCard
                 icon={Percent}
+                accent="amber"
                 title="Team Conversion"
                 value={formatPercent(
                   workspace.kpis.team_conversion.value === null ||
@@ -472,6 +525,7 @@ export default function ManagerDashboardPage() {
               />
               <KpiCard
                 icon={Target}
+                accent="slate"
                 title="Target Attainment"
                 value={formatPercent(workspace.kpis.target_attainment.progress_ratio)}
                 subtext={
@@ -495,18 +549,20 @@ export default function ManagerDashboardPage() {
                       data={workspace.analytics.pipeline_distribution}
                       dataKey="count"
                       nameKey="stage"
-                      innerRadius={54}
-                      outerRadius={82}
+                      innerRadius={48}
+                      outerRadius={74}
                       paddingAngle={3}
                     >
                       {workspace.analytics.pipeline_distribution.map((item, index) => (
-                        <Cell
-                          key={item.stage ?? index}
-                          fill={CHART_COLORS[index % CHART_COLORS.length]}
-                        />
+                        <Cell key={item.stage ?? index} fill={stageColor(item.stage, index)} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(value, name) => [value, stageLabel(String(name))]} />
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      formatter={(value) => legendLabel(stageLabel(String(value)))}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </AnalyticsCard>
@@ -517,7 +573,14 @@ export default function ManagerDashboardPage() {
                     <XAxis dataKey="period" tickFormatter={formatDate} tick={{ fontSize: 11 }} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                     <Tooltip labelFormatter={(value) => formatDate(String(value))} />
-                    <Line type="monotone" dataKey="count" stroke={CHART_PRIMARY} strokeWidth={3} />
+                    <Legend iconType="plainline" formatter={(value) => legendLabel(value)} />
+                    <Line
+                      type="monotone"
+                      dataKey="count"
+                      name="Closed-won deals"
+                      stroke={CHART_PERFORMANCE}
+                      strokeWidth={3}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </AnalyticsCard>
@@ -528,7 +591,8 @@ export default function ManagerDashboardPage() {
                     <XAxis dataKey="period" tickFormatter={formatDate} tick={{ fontSize: 11 }} />
                     <YAxis tickFormatter={(value) => `RM${Number(value) / 1000}k`} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(value) => formatCurrency(String(value))} />
-                    <Bar dataKey="commission" fill={CHART_PRIMARY} radius={[6, 6, 0, 0]} />
+                    <Legend iconType="rect" formatter={(value) => legendLabel(value)} />
+                    <Bar dataKey="commission" name="Commission" fill={CHART_COMMISSION} radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </AnalyticsCard>
@@ -560,6 +624,7 @@ export default function ManagerDashboardPage() {
                       {rows.map((row) => (
                         <tr
                           key={row.ren_id}
+                          data-ren-row="true"
                           className={`cursor-pointer border-t border-slate-200 transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60 ${
                             selectedRenId === row.ren_id
                               ? "bg-slate-100 dark:bg-slate-800"
@@ -625,19 +690,22 @@ export default function ManagerDashboardPage() {
 
               <aside className="space-y-4">
                 <AlertCard
-                  icon={AlertTriangle}
+                  icon={Flame}
+                  tone="red"
                   title="Follow-ups Due"
                   value={workspace.alerts.follow_ups_due.count}
                   href={workspace.alerts.follow_ups_due.href}
                 />
                 <AlertCard
-                  icon={CalendarClock}
+                  icon={CalendarDays}
+                  tone="amber"
                   title="Upcoming Viewings"
                   value={workspace.alerts.upcoming_viewings.count}
                   href={workspace.alerts.upcoming_viewings.href}
                 />
                 <AlertCard
-                  icon={LineChartIcon}
+                  icon={Wallet}
+                  tone="emerald"
                   title="Deals Closing Soon"
                   value={workspace.alerts.deals_closing_soon.count}
                   href={workspace.alerts.deals_closing_soon.href}
@@ -650,6 +718,7 @@ export default function ManagerDashboardPage() {
 
       {selectedMember ? (
         <TeamMemberDrawer
+          containerRef={drawerRef}
           tab={drawerTab}
           selectedMember={selectedMember}
           form={form}
@@ -674,17 +743,21 @@ function AlertCard({
   title,
   value,
   href,
+  tone,
 }: {
   icon: LucideIcon;
   title: string;
   value: number;
   href: string;
+  tone: AccentTone;
 }) {
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-start gap-3">
-        <span className="rounded-xl bg-amber-50 p-2 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-          <Icon className="h-5 w-5" />
+        <span
+          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1 ${ACCENT_STYLES[tone]}`}
+        >
+          <Icon className="size-5" aria-hidden />
         </span>
         <div>
           <p className="text-sm font-medium text-slate-950 dark:text-slate-50">{title}</p>
@@ -704,6 +777,7 @@ function AlertCard({
 }
 
 function TeamMemberDrawer({
+  containerRef,
   tab,
   selectedMember,
   form,
@@ -718,6 +792,7 @@ function TeamMemberDrawer({
   onAddNote,
   onDeleteNote,
 }: {
+  containerRef: React.RefObject<HTMLElement | null>;
   tab: DrawerTab;
   selectedMember: SelectedMember;
   form: DrawerForm | null;
@@ -732,239 +807,252 @@ function TeamMemberDrawer({
   onAddNote: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteNote: (noteId: string) => void;
 }) {
-  if (selectedMember.not_found) {
-    return (
-      <aside className="sticky top-4 hidden h-[calc(100vh-2rem)] w-[360px] shrink-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:block dark:border-slate-800 dark:bg-slate-900">
-        <button
-          className="float-right rounded-md border border-slate-200 p-1 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          type="button"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <h3 className="text-lg font-semibold text-slate-950 dark:text-slate-50">
-          Team member not found
-        </h3>
-        <p className="mt-2 text-sm text-slate-500">
-          This REN could not be found in the current team.
-        </p>
-      </aside>
-    );
-  }
   const active = selectedMember.contact?.active_status !== false;
   return (
-    <aside className="fixed inset-x-0 bottom-0 z-30 max-h-[85vh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 shadow-2xl xl:sticky xl:top-4 xl:h-[calc(100vh-2rem)] xl:w-[370px] xl:shrink-0 xl:rounded-xl xl:shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-slate-900 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
-            {selectedMember.avatar_initials}
-          </span>
-          <div>
-            <h3 className="font-semibold text-slate-950 dark:text-slate-50">
-              {selectedMember.name}
-            </h3>
-            <p className="text-xs text-slate-500">{selectedMember.contact?.email}</p>
-            <span
-              className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                active
-                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
-                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-              }`}
+    <aside
+      ref={containerRef}
+      className="fixed inset-x-0 bottom-0 z-40 max-h-[92vh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white shadow-2xl xl:inset-x-auto xl:right-0 xl:top-0 xl:h-screen xl:max-h-none xl:w-[420px] xl:rounded-none dark:border-slate-800 dark:bg-slate-900"
+    >
+      {selectedMember.not_found ? (
+        <div className="flex min-h-96 items-center justify-center p-6 text-center text-sm text-slate-500">
+          This REN could not be found in the current team.
+        </div>
+      ) : (
+        <div className="flex min-h-full flex-col">
+          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+                  {selectedMember.avatar_initials}
+                </span>
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-slate-50">
+                    {selectedMember.name}
+                  </h3>
+                  <p className="text-sm text-slate-500">{selectedMember.contact?.email}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close drawer"
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <span
+                className={[
+                  "rounded-full px-2.5 py-1 text-xs font-medium",
+                  active
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
+                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+                ].join(" ")}
+              >
+                {active ? "Active" : "Inactive"}
+              </span>
+            </div>
+          </div>
+
+          <div className="border-b border-slate-200 px-5 dark:border-slate-800">
+            <div className="flex gap-5">
+              {(["overview", "performance"] as DrawerTab[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => onTabChange(item)}
+                  className={[
+                    "border-b-2 py-3 text-sm font-medium capitalize transition",
+                    tab === item
+                      ? "border-slate-900 text-slate-900 dark:border-slate-100 dark:text-slate-50"
+                      : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-200",
+                  ].join(" ")}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 space-y-4 p-5">
+            {tab === "overview" && form ? (
+              <div className="space-y-4">
+                <InfoCard title="Contact Information" icon={Users}>
+                  <label className="block text-xs font-medium text-slate-500">Full name</label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    value={form.full_name}
+                    onChange={(event) => onFormChange({ ...form, full_name: event.target.value })}
+                  />
+                  <label className="mt-3 block text-xs font-medium text-slate-500">Phone</label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    value={form.phone_number}
+                    onChange={(event) => onFormChange({ ...form, phone_number: event.target.value })}
+                  />
+                </InfoCard>
+
+                <InfoCard title="Commission Configuration" icon={CircleDollarSign}>
+                  <label className="block text-xs font-medium text-slate-500">Commission rate</label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    type="number"
+                    step="0.001"
+                    value={form.commission_rate}
+                    onChange={(event) => onFormChange({ ...form, commission_rate: event.target.value })}
+                  />
+                  <label className="mt-3 block text-xs font-medium text-slate-500">Monthly target</label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    type="number"
+                    value={form.monthly_target_amount}
+                    onChange={(event) =>
+                      onFormChange({ ...form, monthly_target_amount: event.target.value })
+                    }
+                  />
+                </InfoCard>
+
+                <InfoCard title="Targets" icon={Target}>
+                  <div className="flex justify-between text-sm text-slate-700 dark:text-slate-200">
+                    <span>{formatCurrency(selectedMember.targets?.current_amount)}</span>
+                    <span>{formatCurrency(selectedMember.targets?.target_amount)}</span>
+                  </div>
+                  <div className="mt-2">
+                    <ProgressBar value={selectedMember.targets?.progress_ratio} />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {formatPercent(selectedMember.targets?.progress_ratio)} of monthly target
+                  </p>
+                </InfoCard>
+
+                <InfoCard title="Manager Notes" icon={MessageSquareText}>
+                  <form className="space-y-2" onSubmit={onAddNote}>
+                    <textarea
+                      className="min-h-20 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      placeholder="Add a coaching note..."
+                      value={noteBody}
+                      onChange={(event) => onNoteBodyChange(event.target.value)}
+                    />
+                    <button
+                      className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                      type="submit"
+                    >
+                      Add note
+                    </button>
+                  </form>
+                  <div className="mt-4 space-y-3">
+                    {selectedMember.notes?.length ? (
+                      selectedMember.notes.map((note) => (
+                        <div
+                          key={note.id}
+                          className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                        >
+                          <p>{note.body}</p>
+                          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                            <span>{note.author?.full_name ?? note.author?.email ?? "Manager"}</span>
+                            <button
+                              type="button"
+                              className="font-medium text-rose-600 transition hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+                              onClick={() => onDeleteNote(note.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500 dark:border-slate-700">
+                        No coaching notes yet. Add the first note to capture next steps.
+                      </p>
+                    )}
+                  </div>
+                </InfoCard>
+              </div>
+            ) : null}
+
+            {tab === "performance" ? (
+              <div className="space-y-4">
+                <InfoCard title="Pipeline Mix" icon={BarChart3}>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={selectedMember.performance?.pipeline_distribution ?? []}
+                          dataKey="count"
+                          nameKey="stage"
+                          innerRadius={38}
+                          outerRadius={62}
+                        >
+                          {(selectedMember.performance?.pipeline_distribution ?? []).map((item, index) => (
+                            <Cell key={item.stage ?? index} fill={stageColor(item.stage, index)} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value, name) => [value, stageLabel(String(name))]} />
+                        <Legend
+                          iconType="circle"
+                          iconSize={8}
+                          formatter={(value) => legendLabel(stageLabel(String(value)))}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </InfoCard>
+                <InfoCard title="Performance Trend" icon={LineChartIcon}>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={selectedMember.performance?.performance_trend ?? []}>
+                        <CartesianGrid stroke={CHART_GRID} vertical={false} />
+                        <XAxis dataKey="period" tickFormatter={formatDate} tick={{ fontSize: 10 }} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                        <Legend iconType="plainline" formatter={(value) => legendLabel(value)} />
+                        <Line
+                          type="monotone"
+                          dataKey="count"
+                          name="Closed-won deals"
+                          stroke={CHART_PERFORMANCE}
+                          strokeWidth={3}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </InfoCard>
+                <InfoCard title="Commission Trend" icon={CircleDollarSign}>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={selectedMember.performance?.commission_trend ?? []}>
+                        <CartesianGrid stroke={CHART_GRID} vertical={false} />
+                        <XAxis dataKey="period" tickFormatter={formatDate} tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Legend iconType="rect" formatter={(value) => legendLabel(value)} />
+                        <Bar dataKey="commission" name="Commission" fill={CHART_COMMISSION} radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </InfoCard>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <button
+              className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+              type="button"
+              disabled={!hasPendingEdits}
+              onClick={onSave}
             >
-              {active ? "Active" : "Inactive"}
-            </span>
+              Save
+            </button>
+            <button
+              className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              type="button"
+              onClick={() => onToggleStatus(!active)}
+            >
+              {active ? "Deactivate" : "Reactivate"}
+            </button>
           </div>
         </div>
-        <button
-          className="rounded-md border border-slate-200 p-1 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          type="button"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="mt-5 flex border-b border-slate-200 dark:border-slate-800">
-        {(["overview", "performance"] as DrawerTab[]).map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={`-mb-px px-3 py-2 text-sm font-medium capitalize transition ${
-              tab === item
-                ? "border-b-2 border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-50"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
-            }`}
-            onClick={() => onTabChange(item)}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
-
-      {tab === "overview" && form ? (
-        <div className="mt-5 space-y-4 pb-20">
-          <InfoCard title="Contact Information" icon={Users}>
-            <label className="block text-xs font-medium text-slate-500">Full name</label>
-            <input
-              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              value={form.full_name}
-              onChange={(event) => onFormChange({ ...form, full_name: event.target.value })}
-            />
-            <label className="mt-3 block text-xs font-medium text-slate-500">Phone</label>
-            <input
-              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              value={form.phone_number}
-              onChange={(event) => onFormChange({ ...form, phone_number: event.target.value })}
-            />
-          </InfoCard>
-
-          <InfoCard title="Commission Configuration" icon={CircleDollarSign}>
-            <label className="block text-xs font-medium text-slate-500">Commission rate</label>
-            <input
-              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              type="number"
-              step="0.001"
-              value={form.commission_rate}
-              onChange={(event) => onFormChange({ ...form, commission_rate: event.target.value })}
-            />
-            <label className="mt-3 block text-xs font-medium text-slate-500">Monthly target</label>
-            <input
-              className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              type="number"
-              value={form.monthly_target_amount}
-              onChange={(event) =>
-                onFormChange({ ...form, monthly_target_amount: event.target.value })
-              }
-            />
-          </InfoCard>
-
-          <InfoCard title="Targets" icon={Target}>
-            <div className="flex justify-between text-sm text-slate-700 dark:text-slate-200">
-              <span>{formatCurrency(selectedMember.targets?.current_amount)}</span>
-              <span>{formatCurrency(selectedMember.targets?.target_amount)}</span>
-            </div>
-            <div className="mt-2">
-              <ProgressBar value={selectedMember.targets?.progress_ratio} />
-            </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {formatPercent(selectedMember.targets?.progress_ratio)} of monthly target
-            </p>
-          </InfoCard>
-
-          <InfoCard title="Manager Notes" icon={MessageSquareText}>
-            <form className="space-y-2" onSubmit={onAddNote}>
-              <textarea
-                className="min-h-20 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                placeholder="Add a coaching note..."
-                value={noteBody}
-                onChange={(event) => onNoteBodyChange(event.target.value)}
-              />
-              <button
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-                type="submit"
-              >
-                Add note
-              </button>
-            </form>
-            <div className="mt-4 space-y-3">
-              {selectedMember.notes?.length ? (
-                selectedMember.notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
-                  >
-                    <p>{note.body}</p>
-                    <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                      <span>{note.author?.full_name ?? note.author?.email ?? "Manager"}</span>
-                      <button
-                        type="button"
-                        className="font-medium text-rose-600 transition hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-                        onClick={() => onDeleteNote(note.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500 dark:border-slate-700">
-                  No coaching notes yet. Add the first note to capture next steps.
-                </p>
-              )}
-            </div>
-          </InfoCard>
-        </div>
-      ) : null}
-
-      {tab === "performance" ? (
-        <div className="mt-5 space-y-4 pb-20">
-          <InfoCard title="Pipeline Mix" icon={BarChart3}>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={selectedMember.performance?.pipeline_distribution ?? []}
-                    dataKey="count"
-                    nameKey="stage"
-                    innerRadius={42}
-                    outerRadius={68}
-                  >
-                    {(selectedMember.performance?.pipeline_distribution ?? []).map((item, index) => (
-                      <Cell
-                        key={item.stage ?? index}
-                        fill={CHART_COLORS[index % CHART_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value, name) => [value, stageLabel(String(name))]} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </InfoCard>
-          <InfoCard title="Performance Trend" icon={LineChartIcon}>
-            <div className="h-44">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={selectedMember.performance?.performance_trend ?? []}>
-                  <CartesianGrid stroke={CHART_GRID} vertical={false} />
-                  <XAxis dataKey="period" tickFormatter={formatDate} tick={{ fontSize: 10 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-                  <Line type="monotone" dataKey="count" stroke={CHART_PRIMARY} strokeWidth={3} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </InfoCard>
-          <InfoCard title="Commission Trend" icon={CircleDollarSign}>
-            <div className="h-44">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={selectedMember.performance?.commission_trend ?? []}>
-                  <CartesianGrid stroke={CHART_GRID} vertical={false} />
-                  <XAxis dataKey="period" tickFormatter={formatDate} tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Bar dataKey="commission" fill={CHART_PRIMARY} radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </InfoCard>
-        </div>
-      ) : null}
-
-      <div className="fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t border-slate-200 bg-white p-4 xl:absolute xl:inset-x-0 dark:border-slate-800 dark:bg-slate-900">
-        <button
-          className="flex-1 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-          type="button"
-          disabled={!hasPendingEdits}
-          onClick={onSave}
-        >
-          Save
-        </button>
-        <button
-          className="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          type="button"
-          onClick={() => onToggleStatus(!active)}
-        >
-          {active ? "Deactivate" : "Reactivate"}
-        </button>
-      </div>
+      )}
     </aside>
   );
 }

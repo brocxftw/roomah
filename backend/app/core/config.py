@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "local"
     frontend_origin: str = "http://localhost:3000"
+    frontend_origin_regex: str | None = None
 
     supabase_url: AnyHttpUrl | None = None
     supabase_anon_key: str = ""

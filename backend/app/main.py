@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.auth import SupabaseAuthMiddleware
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.routes.auth import router as auth_router
 from app.routes.campaign_content_templates import router as campaign_templates_router
 from app.routes.campaigns import router as campaigns_router
@@ -32,23 +32,31 @@ def _split_origins(value: str) -> list[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
-_frontend_origins = _split_origins(settings.frontend_origin)
-# Common local development origins to avoid CORS errors when the dev server
-# binds to 127.0.0.1 or an alternative port. Production should rely on the
-# explicit value of FRONTEND_ORIGIN.
-_local_dev_origins = {
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-}
-allowed_origins = sorted(set(_frontend_origins) | _local_dev_origins)
+def _cors_kwargs(settings: Settings) -> dict[str, object]:
+    frontend_origins = _split_origins(settings.frontend_origin)
+    # Common local development origins to avoid CORS errors when the dev server
+    # binds to 127.0.0.1 or an alternative port. Production should rely on the
+    # explicit value of FRONTEND_ORIGIN.
+    local_dev_origins = {
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    }
+    frontend_origin_regex = settings.frontend_origin_regex
+    if frontend_origin_regex is not None:
+        frontend_origin_regex = frontend_origin_regex.strip() or None
+    return {
+        "allow_origins": sorted(set(frontend_origins) | local_dev_origins),
+        "allow_origin_regex": frontend_origin_regex,
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+
 
 app.add_middleware(SupabaseAuthMiddleware, settings=settings)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **_cors_kwargs(settings),
 )
 
 

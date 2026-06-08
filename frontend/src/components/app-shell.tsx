@@ -246,8 +246,8 @@ function AppNavLinks({
               "group flex min-h-12 items-center gap-3 rounded-md px-3 text-[17px] font-medium transition",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               active
-                ? "bg-slate-800 text-white"
-                : "text-slate-300 hover:bg-slate-800 hover:text-white",
+                ? "bg-white/15 text-white"
+                : "text-slate-200 hover:bg-white/10 hover:text-white",
               compact ? "justify-center px-2" : "",
             ].join(" ")}
             title={compact ? item.label : undefined}
@@ -421,39 +421,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onMouseEnter={() => setSidebarHovered(true)}
         onMouseLeave={() => setSidebarHovered(false)}
         className={[
-          "fixed inset-y-0 left-0 z-30 hidden h-screen shrink-0 border-r border-slate-200 bg-slate-900 text-slate-100 shadow-sm transition-[width] duration-200 md:flex md:flex-col",
-          sidebarExpanded ? "w-[280px]" : "w-20",
+          "fixed inset-y-0 left-0 z-30 hidden h-screen shrink-0 border-r border-white/10 bg-[#102A43] text-slate-100 shadow-sm transition-[width] duration-200 md:flex md:flex-col",
+          sidebarExpanded ? "w-[252px]" : "w-20",
         ].join(" ")}
       >
         <div
           className={[
-            "flex h-20 items-center border-b border-slate-700",
+            "flex h-20 items-center border-b border-white/10",
             sidebarCompact ? "justify-center px-0" : "justify-between px-3",
           ].join(" ")}
         >
           <Link
             href="/app"
+            aria-label="ROOMAH"
             className={[
               "flex min-w-0 items-center",
               sidebarCompact ? "h-full w-full justify-center" : "gap-3",
             ].join(" ")}
           >
-            <span
-              aria-label="ROOMAH"
-              className={[
-                "inline-flex shrink-0 items-center justify-center rounded-lg bg-white font-bold tracking-tight text-slate-900",
-                sidebarCompact ? "h-10 w-10 text-base" : "h-12 w-12 text-lg",
-              ].join(" ")}
-            >
-              R
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/brand/rumah-logo-collapse.svg"
+              alt=""
+              aria-hidden
+              className="h-12 w-12 shrink-0 object-contain"
+            />
             {!sidebarCompact ? (
-              <span className="flex min-w-0 flex-col leading-tight text-white">
-                <span className="whitespace-nowrap text-[14px] font-bold tracking-tight">
-                  REAL ESTATE NEGOTIATOR
+              <span className="flex min-w-0 flex-col">
+                <span
+                  className="text-[26px] font-bold leading-none text-white"
+                  style={{ fontFamily: "var(--font-comfortaa)" }}
+                >
+                  roomah
                 </span>
-                <span className="text-[11px] font-medium tracking-wider">
-                  CRM
+                <span
+                  className="mt-1 text-[10px] font-medium uppercase leading-none tracking-[0.24em] text-slate-300"
+                  style={{ fontFamily: '"Garet", var(--font-garet), sans-serif' }}
+                >
+                  Real Estate CRM
                 </span>
               </span>
             ) : null}
@@ -466,11 +471,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             compact={sidebarCompact}
           />
         </div>
-        <div className="space-y-1 border-t border-slate-700 p-2">
+        <div className="space-y-1 border-t border-white/10 p-2">
           <Link
             href="/app/profile"
             className={[
-              "flex min-h-12 items-center gap-3 rounded-md px-3 text-[17px] text-slate-300 transition hover:bg-slate-800 hover:text-slate-100",
+              "flex min-h-12 items-center gap-3 rounded-md px-3 text-[17px] text-slate-200 transition hover:bg-white/10 hover:text-slate-100",
               sidebarCompact ? "justify-center px-2" : "",
             ].join(" ")}
           >
@@ -479,10 +484,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="truncate">Settings</span>
             ) : null}
           </Link>
+          {/* Dark mode toggle hidden for now; will implement later. */}
           <button
             type="button"
             className={[
-              "flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-[17px] text-slate-300 transition hover:bg-slate-800 hover:text-slate-100",
+              "hidden min-h-12 w-full items-center gap-3 rounded-md px-3 text-left text-[17px] text-slate-200 transition hover:bg-white/10 hover:text-slate-100",
               sidebarCompact ? "justify-center px-2" : "",
             ].join(" ")}
             onClick={toggleDarkMode}
@@ -504,7 +510,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className={[
           "transition-[padding] duration-200",
-          sidebarExpanded ? "md:pl-[280px]" : "md:pl-20",
+          sidebarExpanded ? "md:pl-[252px]" : "md:pl-20",
         ].join(" ")}
       >
         <div className="mx-auto flex w-full max-w-[1600px] min-w-0 flex-col gap-6 p-4 md:p-6">
@@ -675,20 +681,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {mobileSidebarOpen ? (
         <div className="fixed inset-0 z-40 bg-black/40 md:hidden">
-          <div className="h-full w-[280px] overflow-y-auto bg-slate-900 p-4 text-slate-100 shadow-xl">
+          <div className="h-full w-[280px] overflow-y-auto bg-[#102A43] p-4 text-slate-100 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <Link href="/app" className="flex items-center gap-2">
-                <span
-                  aria-label="ROOMAH"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white text-base font-bold tracking-tight text-slate-900"
-                >
-                  R
+              <Link href="/app" aria-label="ROOMAH" className="flex items-center gap-2.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/brand/rumah-logo-collapse.svg"
+                  alt=""
+                  aria-hidden
+                  className="h-10 w-10 shrink-0 object-contain"
+                />
+                <span className="flex flex-col">
+                  <span
+                    className="text-[22px] font-bold leading-none text-white"
+                    style={{ fontFamily: "var(--font-comfortaa)" }}
+                  >
+                    roomah
+                  </span>
+                  <span
+                    className="mt-1 text-[9px] font-medium uppercase leading-none tracking-[0.24em] text-slate-300"
+                    style={{ fontFamily: '"Garet", var(--font-garet), sans-serif' }}
+                  >
+                    Real Estate CRM
+                  </span>
                 </span>
-                <span className="font-semibold">ROOMAH</span>
               </Link>
               <button
                 type="button"
-                className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg text-sm hover:bg-slate-800"
+                className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg text-sm hover:bg-white/10"
                 onClick={() => setMobileSidebarOpen(false)}
               >
                 Close

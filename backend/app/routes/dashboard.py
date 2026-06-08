@@ -134,6 +134,16 @@ def get_dashboard(
         .execute()
         .data
     )
+    hot_prospects = (
+        lead_query()
+        .in_(
+            "status",
+            [LeadStatus.PROPOSAL.value, LeadStatus.NEGOTIATION.value],
+        )
+        .order("last_interaction_at", desc=True)
+        .execute()
+        .data
+    )
     today_agenda = (
         viewing_query()
         .eq("status", "scheduled")
@@ -152,7 +162,7 @@ def get_dashboard(
         .data
     )
     funnel_leads = (
-        lead_query("id,status,created_at")
+        lead_query("id,name,phone,email,status,created_at,last_interaction_at")
         .in_("status", PIPELINE_STAGES)
         .gte("created_at", range_start.isoformat())
         .execute()
@@ -181,6 +191,12 @@ def get_dashboard(
             key=lambda row: str(row.get("created_at") or ""),
         ):
             lead_to_property_id[link["lead_id"]] = link["property_id"]
+    leads_needing_property_match = [
+        lead
+        for lead in funnel_leads
+        if lead.get("status") in IN_FLIGHT_LEAD_STATUSES
+        and lead["id"] not in lead_to_property_id
+    ]
 
     property_ids = sorted(set(lead_to_property_id.values()))
     properties_by_id: dict[str, dict[str, Any]] = {}
@@ -417,6 +433,8 @@ def get_dashboard(
             "follow_ups_due": follow_ups_due,
             "upcoming_viewings": upcoming_viewings,
             "deals_closing_soon": deals_closing_soon,
+            "hot_prospects": hot_prospects,
+            "leads_needing_property_match": leads_needing_property_match,
         },
         "kpis": {
             "active_leads": len(active_leads),

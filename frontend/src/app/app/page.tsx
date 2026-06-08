@@ -6,18 +6,22 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
+  DealsRequiringProgression,
+  HotProspects,
+  MonthlyGoal,
+  RecommendedPropertyMatches,
+} from "@/components/dashboard/dashboard-command-centre-widgets";
+import {
   FollowUpsQueue,
   KpiStrip,
-  PipelineFunnel,
   QuickActions,
   RecentActivity,
   TodayAgenda,
-  TodayTasksWidget,
 } from "@/components/dashboard/dashboard-widgets";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
 
-type TargetProgressData = {
+export type TargetProgressData = {
   scope: "personal" | "team";
   target_amount: string | null;
   current_amount: string;
@@ -25,7 +29,7 @@ type TargetProgressData = {
   date_range: string;
 };
 
-type DashboardLead = {
+export type DashboardLead = {
   id: string;
   name?: string | null;
   phone?: string | null;
@@ -34,7 +38,7 @@ type DashboardLead = {
   last_interaction_at?: string | null;
 };
 
-type Dashboard = {
+export type Dashboard = {
   priority_counts: {
     overdue_follow_ups: number;
     viewings_today: number;
@@ -68,6 +72,8 @@ type Dashboard = {
       status: string;
     }[];
     deals_closing_soon: DashboardLead[];
+    hot_prospects: DashboardLead[];
+    leads_needing_property_match: DashboardLead[];
   };
   kpis: {
     active_leads: number;
@@ -110,16 +116,17 @@ export default function DashboardPage() {
     );
   }
 
+  return <DashboardContent dashboard={dashboard} />;
+}
+
+export function DashboardContent({ dashboard }: { dashboard: Dashboard }) {
   const targetProgressPercent =
     dashboard.target_progress.progress_ratio === null
       ? null
-      : Math.min(
-          Math.round(dashboard.target_progress.progress_ratio * 100),
-          100
-        );
+      : Math.min(Math.round(dashboard.target_progress.progress_ratio * 100), 100);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <KpiStrip
         activeLeads={dashboard.kpis.active_leads}
         propertiesListed={dashboard.kpis.properties_listed}
@@ -130,25 +137,38 @@ export default function DashboardPage() {
         dateRange={dashboard.target_progress.date_range}
       />
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
-        <TodayTasksWidget counts={dashboard.priority_counts} />
-        <QuickActions />
+      <section
+        aria-label="Operational workspace"
+        className="grid items-stretch gap-4 xl:grid-cols-3"
+      >
+        <FollowUpsQueue items={dashboard.tasks.follow_ups_due} />
+        <TodayAgenda items={dashboard.today_agenda} />
+        <HotProspects items={dashboard.tasks.hot_prospects} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
-        <TodayAgenda items={dashboard.today_agenda} />
+      <section
+        aria-label="Opportunity management"
+        className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)]"
+      >
+        <RecommendedPropertyMatches
+          items={dashboard.tasks.leads_needing_property_match}
+        />
+        <DealsRequiringProgression items={dashboard.tasks.deals_closing_soon} />
+        <MonthlyGoal
+          targetProgress={dashboard.target_progress}
+          personalProgress={dashboard.personal_progress}
+        />
+      </section>
+
+      <section
+        aria-label="Activity and actions"
+        className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]"
+      >
         <RecentActivity
           items={dashboard.recent_activity}
           dateRange={dashboard.target_progress.date_range}
         />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <PipelineFunnel
-          stages={dashboard.funnel}
-          conversionRate={dashboard.pipeline_conversion_rate}
-        />
-        <FollowUpsQueue items={dashboard.tasks.follow_ups_due} />
+        <QuickActions />
       </section>
     </div>
   );

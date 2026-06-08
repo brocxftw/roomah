@@ -2187,6 +2187,54 @@ def test_dashboard_returns_six_stage_pipeline_funnel_with_values(
     assert dashboard["pipeline_conversion_rate"] == 0.4
 
 
+def test_dashboard_returns_leads_needing_property_match(monkeypatch) -> None:
+    """Integration-style route test: dashboard match signals use scoped lead/link data."""
+
+    supabase = FakeSupabase()
+    auth = auth_context(REN_ID, "REN")
+    patch_supabase(monkeypatch, supabase)
+    now = datetime.now(UTC).isoformat()
+
+    leads = [
+        ("lead-needs-match", REN_ID, "Qualified"),
+        ("lead-linked", REN_ID, "Proposal"),
+        ("lead-other-ren", OTHER_REN_ID, "Qualified"),
+        ("lead-won", REN_ID, "Won"),
+    ]
+    for lead_id, ren_id, status_value in leads:
+        supabase.tables["leads"].append(
+            {
+                "id": lead_id,
+                "team_id": TEAM_ID,
+                "ren_id": ren_id,
+                "name": lead_id.replace("-", " ").title(),
+                "phone": "60100000000",
+                "email": f"{lead_id}@example.com",
+                "status": status_value,
+                "created_at": now,
+                "updated_at": now,
+                "last_interaction_at": now,
+                "campaign_id": None,
+            }
+        )
+
+    supabase.tables["lead_properties"].append(
+        {
+            "lead_id": "lead-linked",
+            "property_id": "property-linked",
+            "status": "active",
+            "created_at": now,
+        }
+    )
+
+    dashboard = dashboard_routes.get_dashboard(auth=auth)
+
+    assert [
+        lead["id"] for lead in dashboard["tasks"]["leads_needing_property_match"]
+    ] == ["lead-needs-match"]
+    assert dashboard["tasks"]["leads_needing_property_match"][0]["status"] == "Qualified"
+
+
 def test_manager_can_patch_team_target_and_dashboard_uses_team_scope(
     monkeypatch,
 ) -> None:
